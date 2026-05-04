@@ -15,7 +15,11 @@ public interface ParticipantRepository extends JpaRepository<Participant, Long> 
 
     List<Participant> findByRoomId(Long roomId);
 
+    List<Participant> findByRoomIdAndIsLeftFalse(Long roomId);
+
     long countByRoomId(Long roomId);
+
+    long countByRoomIdAndIsLeftFalse(Long roomId);
 
     Optional<Participant> findByIdAndRoomId(Long participantId, Long roomId);
 
@@ -23,7 +27,13 @@ public interface ParticipantRepository extends JpaRepository<Participant, Long> 
 
     Optional<Participant> findByUserId(User user);
 
+    Optional<Participant> findFirstByUserId_IdAndIsLeftFalseOrderByIdDesc(Long userId);
+
     boolean existsByRoomIdAndUserId_Id(Long roomId, Long userId);
 
+    boolean existsByRoomIdAndUserId_IdAndIsLeftFalse(Long roomId, Long userId);
+
     Optional<Participant> findByRoomIdAndUserId_Id(Long roomId, Long userId);
+
+    Optional<Participant> findByRoomIdAndUserId_IdAndIsLeftFalse(Long roomId, Long userId);
 }

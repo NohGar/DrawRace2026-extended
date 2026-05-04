@@ -55,9 +55,31 @@ public class Room extends BaseEntity {
         this.curPlayers++;
     }
 
+    /**
+     * 게임 시작 전 대기방 퇴장 때만 사용합니다.
+     * 게임 중에는 round_participant가 participant를 참조할 수 있으므로,
+     * 이 메서드로 컬렉션에서 제거하면 orphanRemoval에 의해 삭제되어 FK 오류가 발생할 수 있습니다.
+     */
     public void removeParticipant(Participant participant) {
         this.participants.remove(participant);
-        this.curPlayers--;
+        decreaseCurPlayers();
+    }
+
+    /**
+     * 게임 중/게임 후 퇴장 처리입니다.
+     * participant를 삭제하지 않고 isLeft=true로만 변경합니다.
+     */
+    public void markParticipantLeft(Participant participant) {
+        if (!participant.isLeft()) {
+            participant.leave();
+            decreaseCurPlayers();
+        }
+    }
+
+    private void decreaseCurPlayers() {
+        if (this.curPlayers > 0) {
+            this.curPlayers--;
+        }
     }
 
     public void changeHost(Long newHostId) {
