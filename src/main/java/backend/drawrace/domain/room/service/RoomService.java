@@ -68,6 +68,7 @@ public class RoomService {
         return roomRepository.findAll().stream()
                 .map(room -> {
                     String hostNickname = room.getParticipants().stream()
+                            .filter(p -> !p.isLeft())
                             .filter(Participant::isHost)
                             .map(p -> p.getUserId().getNickname())
                             .findFirst()
@@ -89,6 +90,7 @@ public class RoomService {
         Room room = roomRepository.findById(roomId).orElseThrow(() -> new ServiceException("404-2", "방을 찾을 수 없습니다."));
 
         List<RoomInfoRes.ParticipantDto> participantDtos = room.getParticipants().stream()
+                .filter(p -> !p.isLeft())
                 .map(p -> new RoomInfoRes.ParticipantDto(
                         p.getUserId().getId(),
                         p.getUserId().getNickname(),
@@ -133,6 +135,11 @@ public class RoomService {
                     throw new ServiceException("400-3", "방 인원이 초과되었습니다.");
                 }
 
+                boolean alreadyInRoom = participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, userId);
+                if (alreadyInRoom) {
+                    throw new ServiceException("400-6", "이미 방에 참여 중입니다.");
+                }
+
                 User user = userRepository
                         .findById(userId)
                         .orElseThrow(() -> new ServiceException("404-1", "유저를 찾을 수 없습니다."));
@@ -157,7 +164,7 @@ public class RoomService {
                 return RoomUpdateResponse.builder()
                         .roomId(roomId)
                         .type("USER_ENTER")
-                        .participants(room.getParticipants().stream()
+                        .participants(getActiveParticipants(room).stream()
                                 .map(p -> p.getUserId().getNickname())
                                 .toList())
                         .message(user.getNickname() + "님이 입장하셨습니다.")
@@ -197,7 +204,7 @@ public class RoomService {
         User aiUser =
                 userRepository.findByIsAi(true).orElseThrow(() -> new ServiceException("404-1", "AI 유저를 찾을 수 없습니다."));
 
-        boolean alreadyInRoom = participantRepository.existsByRoomIdAndUserId_Id(roomId, aiUser.getId());
+        boolean alreadyInRoom = participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, aiUser.getId());
         if (alreadyInRoom) {
             throw new ServiceException("400-5", "AI는 이미 방에 참여 중입니다.");
         }
@@ -217,30 +224,53 @@ public class RoomService {
     }
 
     @Transactional
-    public RoomUpdateResponse leaveRoom(Long userId) {
-        User user = userRepository.findById(userId).orElseThrow(() -> new ServiceException("404-1", "유저를 찾을 수 없습니다."));
-
+    public RoomUpdateResponse leaveRoom(Long roomId, Long userId) {
         Participant participant = participantRepository
-                .findByUserId(user)
+                .findByRoomIdAndUserId_IdAndIsLeftFalse(roomId, userId)
                 .orElseThrow(() -> new ServiceException("404-3", "참여 정보를 찾을 수 없습니다."));
 
+        return leaveParticipant(participant);
+    }
+
+    @Transactional
+    public RoomUpdateResponse leaveCurrentRoom(Long userId) {
+        Optional<Participant> participantOpt =
+                participantRepository.findFirstByUserId_IdAndIsLeftFalseOrderByIdDesc(userId);
+
+        if (participantOpt.isEmpty()) {
+            return null;
+        }
+
+        return leaveParticipant(participantOpt.get());
+    }
+
+    private RoomUpdateResponse leaveParticipant(Participant participant) {
         Room room = participant.getRoom();
         Long roomId = room.getId();
-        Long leaverId = userId;
+
+        User user = participant.getUserId();
+        Long leaverId = user.getId();
         Long newHostId = null;
         String nextHostNickname = "";
 
-        // 방장이 나가는 경우 방장 위임 로직 (AI는 방장이 될 수 없음)
+        boolean playing = room.isPlaying();
+
         if (participant.isHost() && room.getCurPlayers() > 1) {
             Optional<Participant> nextHostOpt = room.getParticipants().stream()
-                    .filter(p -> !p.equals(participant) && !p.getUserId().isAi())
+                    .filter(p -> !p.equals(participant))
+                    .filter(p -> !p.isLeft())
+                    .filter(p -> !p.getUserId().isAi())
                     .findFirst();
 
             if (nextHostOpt.isEmpty()) {
-                // 남은 참여자가 AI뿐 → 방 삭제
-                room.removeParticipant(participant);
-                participantRepository.delete(participant);
-                roomRepository.delete(room);
+                if (playing) {
+                    // 게임 중에는 round_participant FK 참조 때문에 participant를 삭제하지 않고 퇴장 상태만 변경
+                    room.markParticipantLeft(participant);
+                } else {
+                    room.removeParticipant(participant);
+                    participantRepository.delete(participant);
+                    roomRepository.delete(room);
+                }
                 return null;
             }
 
@@ -270,28 +300,43 @@ public class RoomService {
                 .build();
         messagingTemplate.convertAndSend("/sub/rooms/" + roomId + "/chat", leaveNotice);
 
-        // 참여자 제거 및 인원 감소
-        room.removeParticipant(participant);
-        participantRepository.delete(participant);
+        if (playing) {
+            // 게임 중에는 participant를 삭제하지 않고 isLeft=true로만 처리
+            room.markParticipantLeft(participant);
+        } else {
+            // 게임 시작 전 대기방에서는 기존처럼 participant 삭제 가능
+            room.removeParticipant(participant);
+            participantRepository.delete(participant);
+        }
 
-        // 방에 아무도 없거나 AI만 남으면 방 삭제
-        boolean onlyAiOrEmpty =
-                room.getParticipants().stream().allMatch(p -> p.getUserId().isAi());
-        if (room.getCurPlayers() == 0 || onlyAiOrEmpty) {
+        List<Participant> activeParticipants = getActiveParticipants(room);
+
+        boolean onlyAiOrEmpty = activeParticipants.isEmpty()
+                || activeParticipants.stream().allMatch(p -> p.getUserId().isAi());
+
+        if (!playing && onlyAiOrEmpty) {
             roomRepository.delete(room);
             return null;
         }
-        // 웹소켓 동기화를 위한 데이터 반환
+
+        if (playing && onlyAiOrEmpty) {
+            room.finishGame();
+        }
+
         return RoomUpdateResponse.builder()
                 .roomId(roomId)
                 .type("USER_LEAVE")
                 .leaverId(leaverId)
                 .newHostId(newHostId != null ? newHostId : room.getHostId())
-                .participants(room.getParticipants().stream()
+                .participants(activeParticipants.stream()
                         .map(p -> p.getUserId().getNickname())
                         .toList())
                 .message(user.getNickname() + "님이 퇴장하셨습니다.")
                 .build();
+    }
+
+    private List<Participant> getActiveParticipants(Room room) {
+        return room.getParticipants().stream().filter(p -> !p.isLeft()).toList();
     }
 
     @Transactional
@@ -310,7 +355,7 @@ public class RoomService {
                 userRepository.findByIsAi(true).orElseThrow(() -> new ServiceException("404-1", "AI 유저를 찾을 수 없습니다."));
 
         Participant aiParticipant = participantRepository
-                .findByRoomIdAndUserId_Id(roomId, aiUser.getId())
+                .findByRoomIdAndUserId_IdAndIsLeftFalse(roomId, aiUser.getId())
                 .orElseThrow(() -> new ServiceException("404-3", "AI가 방에 참여 중이지 않습니다."));
 
         room.removeParticipant(aiParticipant);

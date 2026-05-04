@@ -87,7 +87,7 @@ public class RoomController {
     @Operation(summary = "방 퇴장")
     @DeleteMapping("/{roomId}/leave")
     public RsData<Void> leaveRoom(@PathVariable Long roomId, @AuthenticationPrincipal SecurityUser securityUser) {
-        RoomUpdateResponse response = roomService.leaveRoom(securityUser.getUserId());
+        RoomUpdateResponse response = roomService.leaveRoom(roomId, securityUser.getUserId());
 
         // 방에 남은 유저들에게 실시간으로 퇴장 및 방장 변경 정보를 전송
         if (response != null) {

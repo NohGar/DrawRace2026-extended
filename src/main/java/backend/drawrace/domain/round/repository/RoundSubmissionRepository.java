@@ -14,6 +14,14 @@ public interface RoundSubmissionRepository extends JpaRepository<RoundSubmission
 
     long countByRoundId(Long roundId);
 
+    @Query("""
+        select count(rs)
+        from RoundSubmission rs
+        where rs.round.id = :roundId
+          and rs.participant.isLeft = false
+        """)
+    long countActiveByRoundId(@Param("roundId") Long roundId);
+
     List<RoundSubmission> findByRoundId(Long roundId);
 
     @Query("""

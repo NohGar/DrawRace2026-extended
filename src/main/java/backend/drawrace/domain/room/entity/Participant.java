@@ -38,6 +38,10 @@ public class Participant extends BaseEntity {
     @Column(name = "is_host", nullable = false)
     private boolean isHost;
 
+    @Column(name = "is_left", nullable = false)
+    @Builder.Default
+    private boolean isLeft = false;
+
     public void increaseRoundWinCount() {
         this.roundWinCount++;
     }
@@ -48,5 +52,10 @@ public class Participant extends BaseEntity {
 
     public void makeHost() {
         this.isHost = true;
+    }
+
+    public void leave() {
+        this.isLeft = true;
+        this.isHost = false;
     }
 }

@@ -62,7 +62,7 @@ public class RoundService {
     public RoundStartResponse startGame(Long roomId, Long userId) {
         Room room = roomRepository.findById(roomId).orElseThrow(() -> new ServiceException("404-1", "존재하지 않는 방입니다."));
 
-        long participantCount = participantRepository.countByRoomId(roomId);
+        long participantCount = participantRepository.countByRoomIdAndIsLeftFalse(roomId);
 
         roundValidator.validateStartGame(
                 room, participantCount, roundRepository.findByRoomIdAndIsActiveTrue(roomId), userId);
@@ -75,7 +75,8 @@ public class RoundService {
 
         Round savedRound = roundRepository.save(firstRound);
 
-        List<Participant> participants = participantRepository.findByRoomId(roomId);
+        // 라운드 참가자 등록은 현재 퇴장하지 않은 참가자만 대상으로 한다.
+        List<Participant> participants = participantRepository.findByRoomIdAndIsLeftFalse(roomId);
         saveRoundParticipants(savedRound, participants);
         triggerAiIfPresent(savedRound, participants);
         triggerAiChatOnRoundStart(roomId, keyword, participants);
@@ -110,6 +111,11 @@ public class RoundService {
         // 방 소속 참가자인지 확인
         Participant participant = getValidParticipant(round, request.getParticipantId());
 
+        // 퇴장한 참가자는 더 이상 제출할 수 없다.
+        if (participant.isLeft()) {
+            throw new ServiceException("403-6", "이미 퇴장한 참가자는 제출할 수 없습니다.");
+        }
+
         // AI 참가자는 인증 검증 스킵
         if (!participant.getUserId().isAi()) {
             roundValidator.validateParticipantOwner(participant, userId);
@@ -140,8 +146,9 @@ public class RoundService {
                 round, participant, request.getImageData(), aiResult.getAiAnswer(), aiResult.getScore());
         roundSubmissionRepository.save(submission);
 
-        long submittedCount = roundSubmissionRepository.countByRoundId(round.getId());
-        long totalParticipantCount = roundParticipantRepository.countByRoundId(round.getId());
+        // 전원 제출 기준은 퇴장하지 않은 참가자만 대상으로 한다.
+        long submittedCount = roundSubmissionRepository.countActiveByRoundId(round.getId());
+        long totalParticipantCount = roundParticipantRepository.countActiveByRoundId(round.getId());
 
         sendPlayerSubmittedEvent(round, participant, submittedCount, totalParticipantCount);
 
@@ -183,7 +190,7 @@ public class RoundService {
                 .orElseThrow(() -> new ServiceException("404-3", "현재 진행 중인 라운드가 없습니다."));
 
         List<RoundParticipantResponse> participants =
-                roundParticipantRepository.findByRoundId(currentRound.getId()).stream()
+                roundParticipantRepository.findActiveByRoundId(currentRound.getId()).stream()
                         .map(roundParticipant -> {
                             Participant participant = roundParticipant.getParticipant();
 
@@ -201,7 +208,7 @@ public class RoundService {
      * 해당 사용자가 방 참가자인지 확인한다.
      */
     private void validateRoomMember(Long roomId, Long userId) {
-        boolean isRoomMember = participantRepository.existsByRoomIdAndUserId_Id(roomId, userId);
+        boolean isRoomMember = participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, userId);
 
         if (!isRoomMember) {
             throw new ServiceException("403-4", "해당 방 참가자만 현재 라운드를 조회할 수 있습니다.");
@@ -303,9 +310,11 @@ public class RoundService {
         if (round.getRoundNumber() < room.getTotalRounds()) {
             Round nextRound = createNextRound(room, round.getRoundNumber() + 1);
 
-            List<Participant> participants = participantRepository.findByRoomId(room.getId());
+            // 다음 라운드 참가자 등록도 퇴장하지 않은 참가자만 대상으로 한다.
+            List<Participant> participants = participantRepository.findByRoomIdAndIsLeftFalse(room.getId());
             saveRoundParticipants(nextRound, participants);
             triggerAiIfPresent(nextRound, participants);
+            triggerAiChatOnRoundStart(room.getId(), nextRound.getKeyword(), participants);
 
             return SubmitDrawingResponse.builder()
                     .roundId(round.getId())
@@ -374,6 +383,7 @@ public class RoundService {
         Round tieBreakerRound = createTieBreakerRound(room, round.getRoundNumber() + 1);
         saveRoundParticipants(tieBreakerRound, topScorers);
         triggerAiIfPresent(tieBreakerRound, topScorers);
+        triggerAiChatOnRoundStart(room.getId(), tieBreakerRound.getKeyword(), topScorers);
 
         return SubmitDrawingResponse.builder()
                 .roundId(round.getId())
@@ -423,6 +433,7 @@ public class RoundService {
      */
     private void saveRoundParticipants(Round round, List<Participant> participants) {
         List<RoundParticipant> roundParticipants = participants.stream()
+                .filter(participant -> !participant.isLeft())
                 .map(participant -> RoundParticipant.of(round, participant))
                 .toList();
 
@@ -457,7 +468,7 @@ public class RoundService {
      * 현재 방에서 최고 승수를 가진 참가자 목록을 조회한다.
      */
     private List<Participant> findTopScorers(Long roomId) {
-        List<Participant> participants = participantRepository.findByRoomId(roomId);
+        List<Participant> participants = participantRepository.findByRoomIdAndIsLeftFalse(roomId);
 
         int maxWinCount = participants.stream()
                 .mapToInt(Participant::getRoundWinCount)
@@ -478,6 +489,7 @@ public class RoundService {
         if (service == null) return;
 
         participants.stream()
+                .filter(p -> !p.isLeft())
                 .filter(p -> p.getUserId().isAi())
                 .findFirst()
                 .ifPresent(ai -> service.trigger(
@@ -502,6 +514,7 @@ public class RoundService {
         if (service == null) return;
 
         participants.stream()
+                .filter(p -> !p.isLeft())
                 .filter(p -> p.getUserId().isAi())
                 .findFirst()
                 .ifPresent(ai -> service.triggerOnRoundStart(
@@ -515,6 +528,7 @@ public class RoundService {
 
         submissions.stream()
                 .map(RoundSubmission::getParticipant)
+                .filter(p -> !p.isLeft())
                 .filter(p -> p.getUserId().isAi())
                 .findFirst()
                 .ifPresent(ai -> {

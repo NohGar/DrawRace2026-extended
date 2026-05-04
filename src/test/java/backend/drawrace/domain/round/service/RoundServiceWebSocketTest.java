@@ -2,6 +2,7 @@ package backend.drawrace.domain.round.service;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.BDDMockito.*;
+import static org.mockito.Mockito.lenient;
 
 import java.util.List;
 import java.util.Optional;
@@ -67,6 +68,9 @@ class RoundServiceWebSocketTest {
     @Mock
     private ObjectProvider<AiSubmissionService> aiSubmissionServiceProvider;
 
+    @Mock
+    private ObjectProvider<backend.drawrace.domain.chat.service.AiChatService> aiChatServiceProvider;
+
     @Test
     @DisplayName("라운드 종료 시 웹소켓으로 결과가 전송되는지 확인한다")
     void shouldBroadcastWhenRoundFinished() {
@@ -83,35 +87,41 @@ class RoundServiceWebSocketTest {
         lenient().when(round.getId()).thenReturn(roundId);
         lenient().when(round.getRoom()).thenReturn(room);
         lenient().when(round.getRoundNumber()).thenReturn(1);
+        lenient().when(round.getKeyword()).thenReturn("강아지");
         lenient().when(roundRepository.findById(roundId)).thenReturn(Optional.of(round));
 
         Participant participant = mock(Participant.class);
         lenient().when(participant.getId()).thenReturn(participantId);
+        lenient().when(participant.isLeft()).thenReturn(false);
         lenient()
                 .when(participantRepository.findByIdAndRoomId(anyLong(), anyLong()))
                 .thenReturn(Optional.of(participant));
 
         User user = mock(User.class);
         lenient().when(user.getNickname()).thenReturn("테스트유저");
+        lenient().when(user.isAi()).thenReturn(false);
         lenient().when(participant.getUserId()).thenReturn(user);
 
         SubmitDrawingRequest request = new SubmitDrawingRequest(participantId, "image-data");
 
         lenient().when(keywordGenerator.generateKeyword()).thenReturn("강아지");
-        lenient().when(aiInferenceService.infer(anyString(), any())).thenReturn(new AiInferenceResponse("정답", 90.0));
+        lenient().when(aiInferenceService.infer(anyString(), any())).thenReturn(new AiInferenceResponse("정답", 0.90));
 
         // 전원 제출 상황 시뮬레이션
-        lenient().when(roundSubmissionRepository.countByRoundId(roundId)).thenReturn(1L);
-        lenient().when(roundParticipantRepository.countByRoundId(roundId)).thenReturn(1L);
+        lenient().when(roundSubmissionRepository.countActiveByRoundId(roundId)).thenReturn(1L);
+        lenient().when(roundParticipantRepository.countActiveByRoundId(roundId)).thenReturn(1L);
 
         Round nextRound = mock(Round.class);
         lenient().when(nextRound.getId()).thenReturn(2L);
+        lenient().when(nextRound.getKeyword()).thenReturn("강아지");
         lenient().when(roundRepository.save(any(Round.class))).thenReturn(nextRound);
 
         RoundSubmission submission = mock(RoundSubmission.class);
         lenient().when(submission.getParticipant()).thenReturn(participant);
-        lenient().when(submission.getScore()).thenReturn(90.0);
+        lenient().when(submission.getScore()).thenReturn(0.90);
         lenient().when(roundSubmissionRepository.findByRoundId(roundId)).thenReturn(List.of(submission));
+
+        lenient().when(participantRepository.findByRoomIdAndIsLeftFalse(roomId)).thenReturn(List.of(participant));
 
         roundService.submitDrawing(roundId, userId, request);
 
@@ -136,12 +146,19 @@ class RoundServiceWebSocketTest {
         Round round = mock(Round.class);
         lenient().when(round.getId()).thenReturn(roundId);
         lenient().when(round.getRoom()).thenReturn(room);
+        lenient().when(round.getRoundNumber()).thenReturn(1);
+        lenient().when(round.getKeyword()).thenReturn("사과");
         lenient().when(roundRepository.findById(roundId)).thenReturn(Optional.of(round));
 
         Participant participant = mock(Participant.class);
+        lenient().when(participant.getId()).thenReturn(participantId);
+        lenient().when(participant.isLeft()).thenReturn(false);
+
         User user = mock(User.class);
         lenient().when(user.getNickname()).thenReturn("승리자유저A");
+        lenient().when(user.isAi()).thenReturn(false);
         lenient().when(participant.getUserId()).thenReturn(user);
+
         lenient()
                 .when(participantRepository.findByIdAndRoomId(anyLong(), anyLong()))
                 .thenReturn(Optional.of(participant));
@@ -149,28 +166,30 @@ class RoundServiceWebSocketTest {
         SubmitDrawingRequest request = new SubmitDrawingRequest(participantId, "image-data");
 
         // 전원 제출 완료 상황 모킹
-        given(roundSubmissionRepository.countByRoundId(roundId)).willReturn(1L);
-        given(roundParticipantRepository.countByRoundId(roundId)).willReturn(1L);
+        given(roundSubmissionRepository.countActiveByRoundId(roundId)).willReturn(1L);
+        given(roundParticipantRepository.countActiveByRoundId(roundId)).willReturn(1L);
 
         // 승자 선정을 위한 가짜 제출 기록
         RoundSubmission submission = mock(RoundSubmission.class);
         lenient().when(submission.getParticipant()).thenReturn(participant);
-        lenient().when(submission.getScore()).thenReturn(95.0); // 여기가 152번 줄일 거야!
+        lenient().when(submission.getScore()).thenReturn(0.95);
         lenient().when(roundSubmissionRepository.findByRoundId(roundId)).thenReturn(List.of(submission));
 
         // AI가 정답을 맞힌 상황
-        given(aiInferenceService.infer(anyString(), any())).willReturn(new AiInferenceResponse("정답", 95.0));
+        given(aiInferenceService.infer(anyString(), any())).willReturn(new AiInferenceResponse("정답", 0.95));
 
-        // 다음 라운드 생성을 위한 모킹 (NPE 방지)
+        // 다음 라운드 생성을 위한 모킹
         Round nextRound = mock(Round.class);
         lenient().when(nextRound.getId()).thenReturn(2L);
+        lenient().when(nextRound.getKeyword()).thenReturn("사과");
         lenient().when(roundRepository.save(any())).thenReturn(nextRound);
         lenient().when(keywordGenerator.generateKeyword()).thenReturn("사과");
+        lenient().when(participantRepository.findByRoomIdAndIsLeftFalse(roomId)).thenReturn(List.of(participant));
 
         // 그림 제출 (이 호출이 라운드 종료를 트리거함)
         roundService.submitDrawing(roundId, userId, request);
 
-        //  검증
+        // 검증
         // [검증] /chat 채널로 WINNER 타입의 메시지가 갔는가?
         verify(messagingTemplate, atLeastOnce())
                 .convertAndSend(

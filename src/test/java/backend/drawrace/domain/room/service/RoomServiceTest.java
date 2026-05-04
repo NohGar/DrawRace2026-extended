@@ -84,13 +84,13 @@ class RoomServiceTest {
     @Test
     @DisplayName("방 입장 실패 - 비밀번호가 틀리면 예외가 발생한다")
     void joinRoom_fail_password() throws Exception {
-
         Long roomId = 100L;
         Room room = Room.builder()
                 .title("비번방")
                 .password("1234")
                 .maxPlayers((short) 4)
                 .build();
+
         given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
 
         assertThatThrownBy(() -> roomService.joinRoom(roomId, 2L, "wrong_pw"))
@@ -109,6 +109,8 @@ class RoomServiceTest {
 
         // 첫 번째, 두 번째 시도는 충돌 발생, 세 번째에 성공하도록 설정
         when(roomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, userId))
+                .thenReturn(false);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
         // save할 때 낙관적 락 예외를 두 번 던지게 함
@@ -126,39 +128,86 @@ class RoomServiceTest {
     }
 
     @Test
-    @DisplayName("유저가 방을 나갈 때 실시간 업데이트 응답을 반환한다")
-    void leaveRoom_ReturnRoomUpdateResponse() {
+    @DisplayName("대기방에서 유저가 방을 나가면 실시간 업데이트 응답을 반환하고 참가자를 삭제한다")
+    void leaveRoom_ReturnRoomUpdateResponse_BeforeGame() throws Exception {
+        Long roomId = 10L;
         Long userId = 1L;
-        User user = mock(User.class);
-        given(user.getNickname()).willReturn("유저A");
+        Long otherUserId = 2L;
 
-        Room room = mock(Room.class);
-        given(room.getId()).willReturn(10L);
-        doReturn((short) 2).when(room).getCurPlayers(); // 남은 인원이 있는 경우
+        Room room = createRoom(roomId, "테스트방", otherUserId);
+        setField(room, "curPlayers", (short) 2);
 
-        Participant participant = mock(Participant.class);
-        given(participant.getRoom()).willReturn(room);
-        given(participant.isHost()).willReturn(false);
+        User user = createUser(userId, "유저A");
+        User otherUser = createUser(otherUserId, "유저B");
 
-        given(userRepository.findById(userId)).willReturn(Optional.of(user));
-        given(participantRepository.findByUserId(user)).willReturn(Optional.of(participant));
-        given(participant.getUserId()).willReturn(user);
-        given(room.getParticipants()).willReturn(List.of(participant));
+        Participant participant =
+                Participant.builder().userId(user).room(room).isHost(false).build();
+        setField(participant, "id", 100L);
 
-        RoomUpdateResponse response = roomService.leaveRoom(userId);
+        Participant otherParticipant =
+                Participant.builder().userId(otherUser).room(room).isHost(true).build();
+        setField(otherParticipant, "id", 101L);
+
+        room.getParticipants().add(participant);
+        room.getParticipants().add(otherParticipant);
+
+        given(participantRepository.findByRoomIdAndUserId_IdAndIsLeftFalse(roomId, userId))
+                .willReturn(Optional.of(participant));
+
+        RoomUpdateResponse response = roomService.leaveRoom(roomId, userId);
 
         assertThat(response).isNotNull();
-        assertThat(response.getRoomId()).isEqualTo(10L);
+        assertThat(response.getRoomId()).isEqualTo(roomId);
         assertThat(response.getType()).isEqualTo("USER_LEAVE");
+        assertThat(response.getLeaverId()).isEqualTo(userId);
+        assertThat(response.getNewHostId()).isEqualTo(otherUserId);
+        assertThat(response.getParticipants()).containsExactly("유저B");
         assertThat(response.getMessage()).contains("유저A님이 퇴장하셨습니다.");
 
         verify(participantRepository, times(1)).delete(participant);
+        verify(roomRepository, never()).delete(room);
+
+        assertThat(room.getParticipants()).doesNotContain(participant);
+        assertThat(room.getParticipants()).contains(otherParticipant);
+    }
+
+    @Test
+    @DisplayName("게임 중 퇴장하면 참가자를 삭제하지 않고 퇴장 상태로 변경한다")
+    void leaveRoom_DuringGame_MarkParticipantLeftWithoutDelete() throws Exception {
+        Long roomId = 10L;
+        Long userId = 1L;
+
+        Room room = createRoom(roomId, "게임방", 2L);
+        setField(room, "isPlaying", true);
+        setField(room, "curPlayers", (short) 2);
+
+        User user = createUser(userId, "유저A");
+        Participant participant =
+                Participant.builder().userId(user).room(room).isHost(false).build();
+        setField(participant, "id", 100L);
+
+        room.getParticipants().add(participant);
+
+        given(participantRepository.findByRoomIdAndUserId_IdAndIsLeftFalse(roomId, userId))
+                .willReturn(Optional.of(participant));
+
+        RoomUpdateResponse response = roomService.leaveRoom(roomId, userId);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getRoomId()).isEqualTo(roomId);
+        assertThat(response.getType()).isEqualTo("USER_LEAVE");
+        assertThat(response.getMessage()).contains("유저A님이 퇴장하셨습니다.");
+
+        assertThat(participant.isLeft()).isTrue();
+        assertThat(room.getCurPlayers()).isEqualTo((short) 1);
+        assertThat(room.getParticipants()).contains(participant);
+
+        verify(participantRepository, never()).delete(any(Participant.class));
     }
 
     @Test
     @DisplayName("게임 종료 성공 - 우승자 마킹 및 스탯이 업데이트된다")
     void finishGame_success() throws Exception {
-
         Long roomId = 100L;
         Long winnerId = 1L;
         Room room = createRoom(roomId, "게임방", winnerId);
@@ -198,6 +247,8 @@ class RoomServiceTest {
         Long nextHostId = 2L;
 
         Room room = createRoom(roomId, "위임테스트", hostId);
+        setField(room, "curPlayers", (short) 2);
+
         User hostUser = createUser(hostId, "방장");
         User nextUser = createUser(nextHostId, "다음방장");
 
@@ -206,14 +257,17 @@ class RoomServiceTest {
         Participant nextPart =
                 Participant.builder().userId(nextUser).room(room).isHost(false).build();
 
+        setField(hostPart, "id", 100L);
+        setField(nextPart, "id", 101L);
+
         // 방에 두 명 참여 중
-        room.addParticipant(hostPart);
-        room.addParticipant(nextPart);
+        room.getParticipants().add(hostPart);
+        room.getParticipants().add(nextPart);
 
-        given(userRepository.findById(hostId)).willReturn(Optional.of(hostUser));
-        given(participantRepository.findByUserId(hostUser)).willReturn(Optional.of(hostPart));
+        given(participantRepository.findByRoomIdAndUserId_IdAndIsLeftFalse(roomId, hostId))
+                .willReturn(Optional.of(hostPart));
 
-        roomService.leaveRoom(hostId);
+        roomService.leaveRoom(roomId, hostId);
 
         assertThat(room.getHostId()).isEqualTo(nextHostId);
         assertThat(nextPart.isHost()).isTrue();
@@ -221,37 +275,76 @@ class RoomServiceTest {
     }
 
     @Test
+    @DisplayName("게임 중 방장이 퇴장하면 다음 사람에게 위임하고 방장은 퇴장 상태로 변경한다")
+    void leaveRoom_hostDelegation_DuringGame() throws Exception {
+        // given
+        Long roomId = 100L;
+        Long hostId = 1L;
+        Long nextHostId = 2L;
+
+        Room room = createRoom(roomId, "게임중위임테스트", hostId);
+        setField(room, "isPlaying", true);
+        setField(room, "curPlayers", (short) 2);
+
+        User hostUser = createUser(hostId, "방장");
+        User nextUser = createUser(nextHostId, "다음방장");
+
+        Participant hostPart =
+                Participant.builder().userId(hostUser).room(room).isHost(true).build();
+        Participant nextPart =
+                Participant.builder().userId(nextUser).room(room).isHost(false).build();
+
+        setField(hostPart, "id", 100L);
+        setField(nextPart, "id", 101L);
+
+        // 방에 두 명 참여 중
+        room.getParticipants().add(hostPart);
+        room.getParticipants().add(nextPart);
+
+        given(participantRepository.findByRoomIdAndUserId_IdAndIsLeftFalse(roomId, hostId))
+                .willReturn(Optional.of(hostPart));
+
+        RoomUpdateResponse response = roomService.leaveRoom(roomId, hostId);
+
+        assertThat(response).isNotNull();
+        assertThat(room.getHostId()).isEqualTo(nextHostId);
+        assertThat(nextPart.isHost()).isTrue();
+
+        assertThat(hostPart.isLeft()).isTrue();
+        assertThat(hostPart.isHost()).isFalse();
+        assertThat(room.getParticipants()).contains(hostPart);
+        verify(participantRepository, never()).delete(any(Participant.class));
+    }
+
+    @Test
     @DisplayName("유저 퇴장 시 퇴장 알림과 방장 위임 알림이 채팅창에 전달된다")
-    void leaveRoom_ShouldSendSystemNotice() {
+    void leaveRoom_ShouldSendSystemNotice() throws Exception {
         // 1. Given: 테스트에 필요한 가짜 객체(Mock) 설정
         Long userId = 1L;
         Long roomId = 10L;
+        Long nextHostId = 2L;
 
-        User user = mock(User.class);
-        lenient().when(user.getId()).thenReturn(userId);
-        lenient().when(user.getNickname()).thenReturn("유저A");
+        Room room = createRoom(roomId, "알림테스트", userId);
+        setField(room, "curPlayers", (short) 2);
 
-        Room room = mock(Room.class);
-        lenient().when(room.getId()).thenReturn(roomId);
-        lenient().when(room.getCurPlayers()).thenReturn((short) 2); // 2명 있는 방
+        User user = createUser(userId, "유저A");
+        User nextUser = createUser(nextHostId, "다음방장");
 
-        Participant participant = mock(Participant.class);
-        lenient().when(participant.getRoom()).thenReturn(room);
-        lenient().when(participant.isHost()).thenReturn(true); // 방장이 나가는 상황 가정
-        lenient().when(participant.getUserId()).thenReturn(user);
+        Participant participant =
+                Participant.builder().userId(user).room(room).isHost(true).build();
+        Participant nextHost =
+                Participant.builder().userId(nextUser).room(room).isHost(false).build();
 
-        // 다음 방장이 될 사람 설정
-        Participant nextHost = mock(Participant.class);
-        User nextUser = mock(User.class);
-        lenient().when(nextUser.getNickname()).thenReturn("다음방장");
-        lenient().when(nextHost.getUserId()).thenReturn(nextUser);
+        setField(participant, "id", 100L);
+        setField(nextHost, "id", 101L);
 
-        given(userRepository.findById(userId)).willReturn(Optional.of(user));
-        given(participantRepository.findByUserId(user)).willReturn(Optional.of(participant));
+        room.getParticipants().add(participant);
+        room.getParticipants().add(nextHost);
 
-        lenient().when(room.getParticipants()).thenReturn(List.of(participant, nextHost));
+        given(participantRepository.findByRoomIdAndUserId_IdAndIsLeftFalse(roomId, userId))
+                .willReturn(Optional.of(participant));
 
-        roomService.leaveRoom(userId);
+        roomService.leaveRoom(roomId, userId);
 
         verify(messagingTemplate, atLeastOnce())
                 .convertAndSend(
@@ -264,6 +357,63 @@ class RoomServiceTest {
                         eq("/sub/rooms/" + roomId + "/chat"),
                         argThat((ChatMessageDto dto) -> dto.getType() == ChatMessageDto.MessageType.NOTICE
                                 && dto.getMessage().contains("방장이 다음방장님으로 변경되었습니다.")));
+    }
+
+    @Test
+    @DisplayName("웹소켓 연결 종료 시 현재 참가 중인 방에서 퇴장 처리한다")
+    void leaveCurrentRoom_success() throws Exception {
+        Long roomId = 10L;
+        Long userId = 1L;
+        Long otherUserId = 2L;
+
+        Room room = createRoom(roomId, "웹소켓퇴장", otherUserId);
+        setField(room, "curPlayers", (short) 2);
+
+        User user = createUser(userId, "유저A");
+        User otherUser = createUser(otherUserId, "유저B");
+
+        Participant participant =
+                Participant.builder().userId(user).room(room).isHost(false).build();
+        setField(participant, "id", 100L);
+
+        Participant otherParticipant =
+                Participant.builder().userId(otherUser).room(room).isHost(true).build();
+        setField(otherParticipant, "id", 101L);
+
+        room.getParticipants().add(participant);
+        room.getParticipants().add(otherParticipant);
+
+        given(participantRepository.findFirstByUserId_IdAndIsLeftFalseOrderByIdDesc(userId))
+                .willReturn(Optional.of(participant));
+
+        RoomUpdateResponse response = roomService.leaveCurrentRoom(userId);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getRoomId()).isEqualTo(roomId);
+        assertThat(response.getType()).isEqualTo("USER_LEAVE");
+        assertThat(response.getLeaverId()).isEqualTo(userId);
+        assertThat(response.getNewHostId()).isEqualTo(otherUserId);
+        assertThat(response.getParticipants()).containsExactly("유저B");
+        assertThat(response.getMessage()).contains("유저A님이 퇴장하셨습니다.");
+
+        verify(participantRepository, times(1)).delete(participant);
+        verify(roomRepository, never()).delete(room);
+
+        assertThat(room.getParticipants()).doesNotContain(participant);
+        assertThat(room.getParticipants()).contains(otherParticipant);
+    }
+
+    @Test
+    @DisplayName("웹소켓 연결 종료 시 현재 참가 중인 방이 없으면 null을 반환한다")
+    void leaveCurrentRoom_noActiveParticipant_returnNull() {
+        Long userId = 1L;
+
+        given(participantRepository.findFirstByUserId_IdAndIsLeftFalseOrderByIdDesc(userId))
+                .willReturn(Optional.empty());
+
+        RoomUpdateResponse response = roomService.leaveCurrentRoom(userId);
+
+        assertThat(response).isNull();
     }
 
     private Room createRoom(Long id, String title, Long hostId) throws Exception {
