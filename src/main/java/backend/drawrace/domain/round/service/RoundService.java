@@ -1,7 +1,5 @@
 package backend.drawrace.domain.round.service;
 
-import backend.drawrace.domain.round.dto.RoundSubmissionResponse;
-import backend.drawrace.domain.round.entity.RoundStatus;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -20,10 +18,12 @@ import backend.drawrace.domain.round.dto.CurrentRoundResponse;
 import backend.drawrace.domain.round.dto.PlayerSubmittedEvent;
 import backend.drawrace.domain.round.dto.RoundParticipantResponse;
 import backend.drawrace.domain.round.dto.RoundStartResponse;
+import backend.drawrace.domain.round.dto.RoundSubmissionResponse;
 import backend.drawrace.domain.round.dto.SubmitDrawingRequest;
 import backend.drawrace.domain.round.dto.SubmitDrawingResponse;
 import backend.drawrace.domain.round.entity.Round;
 import backend.drawrace.domain.round.entity.RoundParticipant;
+import backend.drawrace.domain.round.entity.RoundStatus;
 import backend.drawrace.domain.round.entity.RoundSubmission;
 import backend.drawrace.domain.round.repository.RoundParticipantRepository;
 import backend.drawrace.domain.round.repository.RoundRepository;
@@ -389,8 +389,8 @@ public class RoundService {
     }
 
     public List<RoundSubmissionResponse> getRoundSubmissions(Long roundId, Long userId) {
-        Round round = roundRepository.findById(roundId)
-                .orElseThrow(() -> new ServiceException("404-5", "존재하지 않는 라운드입니다."));
+        Round round =
+                roundRepository.findById(roundId).orElseThrow(() -> new ServiceException("404-5", "존재하지 않는 라운드입니다."));
 
         Long roomId = round.getRoom().getId();
 
@@ -409,8 +409,7 @@ public class RoundService {
 
         return submissions.stream()
                 .map(submission -> RoundSubmissionResponse.from(
-                        submission,
-                        submission.getParticipant().getId().equals(winnerParticipantId)))
+                        submission, submission.getParticipant().getId().equals(winnerParticipantId)))
                 .toList();
     }
 

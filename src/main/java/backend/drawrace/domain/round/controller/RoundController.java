@@ -1,12 +1,13 @@
 package backend.drawrace.domain.round.controller;
 
-import backend.drawrace.domain.round.dto.RoundSubmissionResponse;
+import java.util.List;
+
 import jakarta.validation.Valid;
 
-import java.util.List;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import backend.drawrace.domain.round.dto.RoundSubmissionResponse;
 import backend.drawrace.domain.round.dto.SubmitDrawingRequest;
 import backend.drawrace.domain.round.dto.SubmitDrawingResponse;
 import backend.drawrace.domain.round.service.RoundService;
@@ -38,16 +39,10 @@ public class RoundController {
     @Operation(summary = "라운드 제출 목록 조회", description = "종료된 라운드의 참가자별 그림, AI 판별 결과, 점수, 우승 여부를 조회합니다.")
     @GetMapping("/{roundId}/submissions")
     public RsData<List<RoundSubmissionResponse>> getRoundSubmissions(
-            @PathVariable Long roundId,
-            @AuthenticationPrincipal SecurityUser securityUser) {
+            @PathVariable Long roundId, @AuthenticationPrincipal SecurityUser securityUser) {
 
-        List<RoundSubmissionResponse> responses =
-                roundService.getRoundSubmissions(roundId, securityUser.getUserId());
+        List<RoundSubmissionResponse> responses = roundService.getRoundSubmissions(roundId, securityUser.getUserId());
 
-        return new RsData<>(
-                "200-1",
-                "라운드 제출 목록 조회가 완료되었습니다.",
-                responses
-        );
+        return new RsData<>("200-1", "라운드 제출 목록 조회가 완료되었습니다.", responses);
     }
 }

@@ -3,10 +3,10 @@ package backend.drawrace.domain.round.repository;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
-
-import backend.drawrace.domain.round.entity.RoundSubmission;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+
+import backend.drawrace.domain.round.entity.RoundSubmission;
 
 public interface RoundSubmissionRepository extends JpaRepository<RoundSubmission, Long> {
 
