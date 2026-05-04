@@ -9,8 +9,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.boot.test.mock.mockito.MockBean;
+
+import static org.mockito.BDDMockito.given;
+
 import backend.drawrace.domain.user.dto.CreateUserRequest;
-import backend.drawrace.domain.user.dto.GuestLoginRequest;
 import backend.drawrace.domain.user.dto.UpdateUserRequest;
 import backend.drawrace.domain.user.dto.UserInfoResponse;
 import backend.drawrace.domain.user.dto.UserSearchResponse;
@@ -25,6 +28,9 @@ class UserServiceTest {
 
     @Autowired
     AuthService authService;
+
+    @MockBean
+    GuestNicknameGenerator nicknameGenerator;
 
     private Long createTestUser() {
         return authService.signup(new CreateUserRequest("test@example.com", "password123", "테스터"));
@@ -158,7 +164,8 @@ class UserServiceTest {
     @Test
     @DisplayName("게스트_프로필_수정_실패")
     void updateProfile_fail_guest() {
-        authService.guestLogin(new GuestLoginRequest("게스트테스터"));
+        given(nicknameGenerator.generate()).willReturn("게스트테스터");
+        authService.guestLogin();
         Long guestId = userService.searchByNickname("게스트테스터").id();
 
         assertThatThrownBy(() -> userService.updateProfile(guestId, new UpdateUserRequest("새닉네임", null)))

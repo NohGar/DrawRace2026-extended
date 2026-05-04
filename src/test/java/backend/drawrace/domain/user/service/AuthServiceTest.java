@@ -17,7 +17,6 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.transaction.annotation.Transactional;
 
 import backend.drawrace.domain.user.dto.CreateUserRequest;
-import backend.drawrace.domain.user.dto.GuestLoginRequest;
 import backend.drawrace.domain.user.dto.LoginRequest;
 import backend.drawrace.domain.user.dto.LoginResponse;
 import backend.drawrace.domain.user.dto.TokenRequest;
@@ -36,6 +35,9 @@ class AuthServiceTest {
     @MockBean
     // @Autowired
     RefreshTokenRepository refreshTokenRepository;
+
+    @MockBean
+    GuestNicknameGenerator nicknameGenerator;
 
     @AfterEach
     void tearDown() {
@@ -202,7 +204,9 @@ class AuthServiceTest {
     @Test
     @DisplayName("게스트_로그인_성공")
     void guestLogin_success() {
-        LoginResponse response = authService.guestLogin(new GuestLoginRequest("게스트닉네임"));
+        given(nicknameGenerator.generate()).willReturn("게스트닉네임");
+
+        LoginResponse response = authService.guestLogin();
 
         assertThat(response.accessToken()).isNotBlank();
         assertThat(response.refreshToken()).isEmpty();
@@ -211,8 +215,10 @@ class AuthServiceTest {
     @Test
     @DisplayName("게스트_로그인_성공_닉네임_중복_시_suffix_부여")
     void guestLogin_success_duplicate_nickname_gets_suffix() {
-        authService.guestLogin(new GuestLoginRequest("홍길동"));
-        LoginResponse response = authService.guestLogin(new GuestLoginRequest("홍길동"));
+        given(nicknameGenerator.generate()).willReturn("홍길동");
+
+        authService.guestLogin();
+        LoginResponse response = authService.guestLogin();
 
         assertThat(response.accessToken()).isNotBlank();
     }
@@ -221,8 +227,9 @@ class AuthServiceTest {
     @DisplayName("게스트_로그인_성공_회원_닉네임과_중복_시_suffix_부여")
     void guestLogin_success_member_nickname_conflict_gets_suffix() {
         createTestUser(); // 닉네임: 테스터
+        given(nicknameGenerator.generate()).willReturn("테스터");
 
-        LoginResponse response = authService.guestLogin(new GuestLoginRequest("테스터"));
+        LoginResponse response = authService.guestLogin();
 
         assertThat(response.accessToken()).isNotBlank();
     }

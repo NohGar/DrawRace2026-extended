@@ -11,7 +11,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import backend.drawrace.domain.user.dto.CreateUserRequest;
-import backend.drawrace.domain.user.dto.GuestLoginRequest;
 import backend.drawrace.domain.user.dto.LoginRequest;
 import backend.drawrace.domain.user.dto.LoginResponse;
 import backend.drawrace.domain.user.dto.TokenRequest;
@@ -54,8 +53,8 @@ public class AuthController {
     }
 
     @PostMapping("/guest")
-    public RsData<LoginResponse> guestLogin(@RequestBody @Valid GuestLoginRequest request) {
-        LoginResponse token = authService.guestLogin(request);
+    public RsData<LoginResponse> guestLogin() {
+        LoginResponse token = authService.guestLogin();
         return new RsData<>("201-2", "게스트 로그인에 성공했습니다.", token);
     }
 

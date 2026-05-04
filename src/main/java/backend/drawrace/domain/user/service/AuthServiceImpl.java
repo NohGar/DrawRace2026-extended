@@ -1,13 +1,13 @@
 package backend.drawrace.domain.user.service;
 
 import java.util.UUID;
+import java.util.concurrent.ThreadLocalRandom;
 
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import backend.drawrace.domain.user.dto.CreateUserRequest;
-import backend.drawrace.domain.user.dto.GuestLoginRequest;
 import backend.drawrace.domain.user.dto.LoginRequest;
 import backend.drawrace.domain.user.dto.LoginResponse;
 import backend.drawrace.domain.user.dto.TokenRequest;
@@ -30,6 +30,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final GuestNicknameGenerator nicknameGenerator;
 
     @Override
     @Transactional
@@ -112,8 +113,8 @@ public class AuthServiceImpl implements AuthService {
 
     @Override
     @Transactional
-    public LoginResponse guestLogin(GuestLoginRequest request) {
-        String nickname = resolveGuestNickname(request.nickname());
+    public LoginResponse guestLogin() {
+        String nickname = resolveNickname(nicknameGenerator.generate());
 
         User guest = User.builder()
                 .email("guest_" + UUID.randomUUID() + "@drawrace.com")
@@ -129,15 +130,14 @@ public class AuthServiceImpl implements AuthService {
         return new LoginResponse(accessToken, "");
     }
 
-    private String resolveGuestNickname(String base) {
-        if (!userRepository.existsByNickname(base)) {
-            return base;
-        }
-        int suffix = 1;
-        while (userRepository.existsByNickname(base + "_" + suffix)) {
-            suffix++;
-        }
-        return base + "_" + suffix;
+    private String resolveNickname(String base) {
+        if (!userRepository.existsByNickname(base)) return base;
+        String candidate;
+        do {
+            int suffix = ThreadLocalRandom.current().nextInt(1000, 10000);
+            candidate = base + "_" + suffix;
+        } while (userRepository.existsByNickname(candidate));
+        return candidate;
     }
 
     @Override
