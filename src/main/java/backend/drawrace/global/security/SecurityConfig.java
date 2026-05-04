@@ -42,6 +42,8 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
                         .permitAll()
+                        .requestMatchers("/files/uploads/**")
+                        .permitAll()
                         // 웹소켓 연결 시작 주소는 허용 (인증은 인터셉터에서 수행)
                         .requestMatchers("/ws-draw/**")
                         .permitAll()

@@ -29,6 +29,10 @@ public class LocalFileStorageService implements FileStorageService {
 
     @Override
     public String store(MultipartFile file) {
+        if (file.isEmpty()) {
+            throw new ServiceException("400-2", "파일이 비어 있습니다.");
+        }
+
         String ext = extractExtension(file.getOriginalFilename());
         if (!ALLOWED_EXTENSIONS.contains(ext.toLowerCase())) {
             throw new ServiceException("400-2", "허용되지 않는 파일 형식입니다. (jpg, jpeg, png, gif, webp)");

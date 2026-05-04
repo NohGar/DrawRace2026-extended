@@ -94,44 +94,19 @@ class UserServiceTest {
     }
 
     @Test
-    @DisplayName("프로필_수정_성공_닉네임만_변경")
+    @DisplayName("프로필_수정_성공_닉네임_변경")
     void updateProfile_success_nickname_only() {
         Long savedId = createTestUser();
 
-        UserInfoResponse response = userService.updateProfile(savedId, new UpdateUserRequest("새닉네임", null));
+        UserInfoResponse response = userService.updateProfile(savedId, new UpdateUserRequest("새닉네임"));
 
         assertThat(response.nickname()).isEqualTo("새닉네임");
-        assertThat(response.profileImageUrl()).isNull();
-    }
-
-    @Test
-    @DisplayName("프로필_수정_성공_프로필이미지만_변경")
-    void updateProfile_success_profileImage_only() {
-        Long savedId = createTestUser();
-
-        UserInfoResponse response =
-                userService.updateProfile(savedId, new UpdateUserRequest(null, "https://example.com/image.png"));
-
-        assertThat(response.nickname()).isEqualTo("테스터");
-        assertThat(response.profileImageUrl()).isEqualTo("https://example.com/image.png");
-    }
-
-    @Test
-    @DisplayName("프로필_수정_성공_닉네임_프로필이미지_모두_변경")
-    void updateProfile_success_all_fields() {
-        Long savedId = createTestUser();
-
-        UserInfoResponse response =
-                userService.updateProfile(savedId, new UpdateUserRequest("새닉네임", "https://example.com/image.png"));
-
-        assertThat(response.nickname()).isEqualTo("새닉네임");
-        assertThat(response.profileImageUrl()).isEqualTo("https://example.com/image.png");
     }
 
     @Test
     @DisplayName("프로필_수정_실패_존재하지_않는_유저")
     void updateProfile_fail_not_found() {
-        assertThatThrownBy(() -> userService.updateProfile(999L, new UpdateUserRequest("새닉네임", null)))
+        assertThatThrownBy(() -> userService.updateProfile(999L, new UpdateUserRequest("새닉네임")))
                 .isInstanceOf(ServiceException.class)
                 .hasFieldOrPropertyWithValue("resultCode", "404-1");
     }
@@ -142,7 +117,7 @@ class UserServiceTest {
         Long savedId = createTestUser();
         authService.signup(new CreateUserRequest("other@example.com", "password123", "다른유저"));
 
-        assertThatThrownBy(() -> userService.updateProfile(savedId, new UpdateUserRequest("다른유저", null)))
+        assertThatThrownBy(() -> userService.updateProfile(savedId, new UpdateUserRequest("다른유저")))
                 .isInstanceOf(ServiceException.class)
                 .hasFieldOrPropertyWithValue("resultCode", "409-1");
     }
@@ -152,7 +127,7 @@ class UserServiceTest {
     void updateProfile_success_same_nickname() {
         Long savedId = createTestUser();
 
-        UserInfoResponse response = userService.updateProfile(savedId, new UpdateUserRequest("테스터", null));
+        UserInfoResponse response = userService.updateProfile(savedId, new UpdateUserRequest("테스터"));
 
         assertThat(response.nickname()).isEqualTo("테스터");
     }
@@ -166,7 +141,7 @@ class UserServiceTest {
         authService.guestLogin();
         Long guestId = userService.searchByNickname("게스트테스터").id();
 
-        assertThatThrownBy(() -> userService.updateProfile(guestId, new UpdateUserRequest("새닉네임", null)))
+        assertThatThrownBy(() -> userService.updateProfile(guestId, new UpdateUserRequest("새닉네임")))
                 .isInstanceOf(ServiceException.class)
                 .hasFieldOrPropertyWithValue("resultCode", "403-4");
     }
