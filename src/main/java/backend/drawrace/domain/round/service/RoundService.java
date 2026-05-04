@@ -19,10 +19,12 @@ import backend.drawrace.domain.round.dto.CurrentRoundResponse;
 import backend.drawrace.domain.round.dto.PlayerSubmittedEvent;
 import backend.drawrace.domain.round.dto.RoundParticipantResponse;
 import backend.drawrace.domain.round.dto.RoundStartResponse;
+import backend.drawrace.domain.round.dto.RoundSubmissionResponse;
 import backend.drawrace.domain.round.dto.SubmitDrawingRequest;
 import backend.drawrace.domain.round.dto.SubmitDrawingResponse;
 import backend.drawrace.domain.round.entity.Round;
 import backend.drawrace.domain.round.entity.RoundParticipant;
+import backend.drawrace.domain.round.entity.RoundStatus;
 import backend.drawrace.domain.round.entity.RoundSubmission;
 import backend.drawrace.domain.round.repository.RoundParticipantRepository;
 import backend.drawrace.domain.round.repository.RoundRepository;
@@ -173,7 +175,6 @@ public class RoundService {
      * 현재 진행 중인 라운드를 조회한다.
      * - 방 참가자만 조회 가능하다.
      */
-    @Transactional(readOnly = true)
     public CurrentRoundResponse getCurrentRound(Long roomId, Long userId) {
         validateRoomMember(roomId, userId);
 
@@ -390,6 +391,31 @@ public class RoundService {
                 .nextRoundNumber(tieBreakerRound.getRoundNumber())
                 .nextRoundTieBreaker(true)
                 .build();
+    }
+
+    public List<RoundSubmissionResponse> getRoundSubmissions(Long roundId, Long userId) {
+        Round round =
+                roundRepository.findById(roundId).orElseThrow(() -> new ServiceException("404-5", "존재하지 않는 라운드입니다."));
+
+        Long roomId = round.getRoom().getId();
+
+        validateRoomMember(roomId, userId);
+
+        if (round.getStatus() != RoundStatus.FINISHED) {
+            throw new ServiceException("403-5", "종료된 라운드의 제출 목록만 조회할 수 있습니다.");
+        }
+
+        List<RoundSubmission> submissions =
+                roundSubmissionRepository.findAllWithParticipantAndUserByRoundIdOrderByScoreDescCreatedAtAsc(roundId);
+
+        Long winnerParticipantId = submissions.isEmpty()
+                ? null
+                : submissions.get(0).getParticipant().getId();
+
+        return submissions.stream()
+                .map(submission -> RoundSubmissionResponse.from(
+                        submission, submission.getParticipant().getId().equals(winnerParticipantId)))
+                .toList();
     }
 
     /**

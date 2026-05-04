@@ -26,6 +26,7 @@ import backend.drawrace.domain.round.dto.AiInferenceResponse;
 import backend.drawrace.domain.round.dto.CurrentRoundResponse;
 import backend.drawrace.domain.round.dto.PlayerSubmittedEvent;
 import backend.drawrace.domain.round.dto.RoundStartResponse;
+import backend.drawrace.domain.round.dto.RoundSubmissionResponse;
 import backend.drawrace.domain.round.dto.SubmitDrawingRequest;
 import backend.drawrace.domain.round.dto.SubmitDrawingResponse;
 import backend.drawrace.domain.round.entity.Round;
@@ -811,6 +812,129 @@ class RoundServiceTest {
                 .save(argThat(submission -> submission.getScore() >= 0.70 && submission.getScore() < 0.85));
     }
 
+    @Test
+    @DisplayName("종료된 라운드의 제출 목록을 조회한다")
+    void getRoundSubmissions_success() throws Exception {
+        Long roomId = 1L;
+        Long roundId = 10L;
+        Long userId = 1L;
+
+        Room room = createRoom(roomId, true, userId);
+        Round round = createInProgressRound(roundId, room, 1, "버섯");
+        round.finish();
+
+        Participant participant1 = createParticipantWithNickname(100L, room, "도환", 0);
+        Participant participant2 = createParticipantWithNickname(101L, room, "AI", 0);
+
+        RoundSubmission submission1 = RoundSubmission.create(round, participant1, "image-1", "버섯", 0.95);
+        RoundSubmission submission2 = RoundSubmission.create(round, participant2, "image-2", "버섯", 0.70);
+
+        given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
+        given(participantRepository.existsByRoomIdAndUserId_Id(roomId, userId)).willReturn(true);
+        given(roundSubmissionRepository.findAllWithParticipantAndUserByRoundIdOrderByScoreDescCreatedAtAsc(roundId))
+                .willReturn(List.of(submission1, submission2));
+
+        List<RoundSubmissionResponse> responses = roundService.getRoundSubmissions(roundId, userId);
+
+        assertThat(responses).hasSize(2);
+
+        assertThat(responses.get(0).getParticipantId()).isEqualTo(100L);
+        assertThat(responses.get(0).getNickname()).isEqualTo("도환");
+        assertThat(responses.get(0).getImageData()).isEqualTo("image-1");
+        assertThat(responses.get(0).getAiAnswer()).isEqualTo("버섯");
+        assertThat(responses.get(0).getScore()).isEqualTo(0.95);
+        assertThat(responses.get(0).isWinner()).isTrue();
+
+        assertThat(responses.get(1).getParticipantId()).isEqualTo(101L);
+        assertThat(responses.get(1).getNickname()).isEqualTo("AI");
+        assertThat(responses.get(1).getImageData()).isEqualTo("image-2");
+        assertThat(responses.get(1).getAiAnswer()).isEqualTo("버섯");
+        assertThat(responses.get(1).getScore()).isEqualTo(0.70);
+        assertThat(responses.get(1).isWinner()).isFalse();
+    }
+
+    @Test
+    @DisplayName("진행 중인 라운드의 제출 목록은 조회할 수 없다")
+    void getRoundSubmissions_fail_roundInProgress() throws Exception {
+        Long roomId = 1L;
+        Long roundId = 10L;
+        Long userId = 1L;
+
+        Room room = createRoom(roomId, true, userId);
+        Round round = createInProgressRound(roundId, room, 1, "버섯");
+
+        given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
+        given(participantRepository.existsByRoomIdAndUserId_Id(roomId, userId)).willReturn(true);
+
+        assertThatThrownBy(() -> roundService.getRoundSubmissions(roundId, userId))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("종료된 라운드의 제출 목록만 조회할 수 있습니다");
+    }
+
+    @Test
+    @DisplayName("방 참가자가 아니면 라운드 제출 목록을 조회할 수 없다")
+    void getRoundSubmissions_fail_notRoomMember() throws Exception {
+        Long roomId = 1L;
+        Long roundId = 10L;
+        Long userId = 99L;
+
+        Room room = createRoom(roomId, true, 1L);
+        Round round = createInProgressRound(roundId, room, 1, "버섯");
+        round.finish();
+
+        given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
+        given(participantRepository.existsByRoomIdAndUserId_Id(roomId, userId)).willReturn(false);
+
+        assertThatThrownBy(() -> roundService.getRoundSubmissions(roundId, userId))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("해당 방 참가자만 현재 라운드를 조회할 수 있습니다");
+    }
+
+    @Test
+    @DisplayName("제출 목록은 점수 내림차순이며 동점이면 먼저 제출한 참가자가 winner가 된다")
+    void getRoundSubmissions_orderByScoreDescAndCreatedAtAsc() throws Exception {
+        Long roomId = 1L;
+        Long roundId = 10L;
+        Long userId = 1L;
+
+        Room room = createRoom(roomId, true, userId);
+        Round round = createInProgressRound(roundId, room, 1, "시계");
+        round.finish();
+
+        Participant participant1 = createParticipantWithNickname(100L, room, "먼저제출", 0);
+        Participant participant2 = createParticipantWithNickname(101L, room, "늦게제출", 0);
+        Participant participant3 = createParticipantWithNickname(102L, room, "낮은점수", 0);
+
+        RoundSubmission firstHighScore = RoundSubmission.create(round, participant1, "image-1", "시계", 0.90);
+        RoundSubmission sameHighScoreButLater = RoundSubmission.create(round, participant2, "image-2", "시계", 0.90);
+        RoundSubmission lowScore = RoundSubmission.create(round, participant3, "image-3", "원", 0.40);
+
+        setCreatedAt(firstHighScore, LocalDateTime.of(2026, 1, 1, 10, 0));
+        setCreatedAt(sameHighScoreButLater, LocalDateTime.of(2026, 1, 1, 10, 1));
+        setCreatedAt(lowScore, LocalDateTime.of(2026, 1, 1, 10, 2));
+
+        given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
+        given(participantRepository.existsByRoomIdAndUserId_Id(roomId, userId)).willReturn(true);
+        given(roundSubmissionRepository.findAllWithParticipantAndUserByRoundIdOrderByScoreDescCreatedAtAsc(roundId))
+                .willReturn(List.of(firstHighScore, sameHighScoreButLater, lowScore));
+
+        List<RoundSubmissionResponse> responses = roundService.getRoundSubmissions(roundId, userId);
+
+        assertThat(responses).hasSize(3);
+
+        assertThat(responses.get(0).getParticipantId()).isEqualTo(100L);
+        assertThat(responses.get(0).getNickname()).isEqualTo("먼저제출");
+        assertThat(responses.get(0).isWinner()).isTrue();
+
+        assertThat(responses.get(1).getParticipantId()).isEqualTo(101L);
+        assertThat(responses.get(1).getNickname()).isEqualTo("늦게제출");
+        assertThat(responses.get(1).isWinner()).isFalse();
+
+        assertThat(responses.get(2).getParticipantId()).isEqualTo(102L);
+        assertThat(responses.get(2).getNickname()).isEqualTo("낮은점수");
+        assertThat(responses.get(2).isWinner()).isFalse();
+    }
+
     private Participant createAiParticipant(Long participantId, Room room, Long aiUserId) throws Exception {
         User user = mock(User.class);
         given(user.isAi()).willReturn(true);
@@ -890,5 +1014,18 @@ class RoundServiceTest {
             count++;
         }
         return count;
+    }
+
+    private Participant createParticipantWithNickname(Long participantId, Room room, String nickname, int roundWinCount)
+            throws Exception {
+        User user = mock(User.class);
+        given(user.getNickname()).willReturn(nickname);
+
+        Participant participant =
+                Participant.builder().userId(user).room(room).isHost(false).build();
+
+        setField(participant, "id", participantId);
+        setField(participant, "roundWinCount", roundWinCount);
+        return participant;
     }
 }
