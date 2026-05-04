@@ -1,5 +1,7 @@
 package backend.drawrace.domain.user.service;
 
+import org.springframework.web.multipart.MultipartFile;
+
 import backend.drawrace.domain.user.dto.UpdateUserRequest;
 import backend.drawrace.domain.user.dto.UserInfoResponse;
 import backend.drawrace.domain.user.dto.UserSearchResponse;
@@ -34,6 +36,14 @@ public interface UserService {
      * @return 수정된 유저 정보 dto
      */
     UserInfoResponse updateProfile(Long userId, UpdateUserRequest request);
+
+    /**
+     * 프로필 이미지 업로드 및 교체
+     * @param userId 수정할 유저 ID
+     * @param image 업로드할 이미지 파일
+     * @return 수정된 유저 정보 dto
+     */
+    UserInfoResponse updateProfileImage(Long userId, MultipartFile image);
 
     /**
      * 유저 엔티티 직접 조회 (서비스 간 내부 사용)

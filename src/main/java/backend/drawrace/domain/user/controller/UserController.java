@@ -2,16 +2,20 @@ package backend.drawrace.domain.user.controller;
 
 import jakarta.validation.constraints.NotBlank;
 
+import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import backend.drawrace.domain.user.dto.UpdateUserRequest;
 import backend.drawrace.domain.user.dto.UserInfoResponse;
@@ -66,6 +70,14 @@ public class UserController {
             @AuthenticationPrincipal SecurityUser securityUser, @RequestBody @Validated UpdateUserRequest request) {
         UserInfoResponse response = userService.updateProfile(securityUser.getUserId(), request);
         return new RsData<>("200-4", "프로필이 성공적으로 수정되었습니다.", response);
+    }
+
+    @Operation(summary = "프로필 이미지 업로드", description = "이미지 파일을 업로드하여 프로필 이미지를 교체합니다. (jpg, jpeg, png, gif, webp)")
+    @PostMapping(value = "/me/profile-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public RsData<UserInfoResponse> updateProfileImage(
+            @AuthenticationPrincipal SecurityUser securityUser, @RequestPart MultipartFile image) {
+        UserInfoResponse response = userService.updateProfileImage(securityUser.getUserId(), image);
+        return new RsData<>("200-6", "프로필 이미지가 성공적으로 변경되었습니다.", response);
     }
 
     @Operation(summary = "회원 탈퇴", description = "계정을 삭제하고 세션(리프레시 토큰)을 만료시킵니다.")
