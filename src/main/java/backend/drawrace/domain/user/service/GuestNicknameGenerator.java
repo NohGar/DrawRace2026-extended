@@ -20,9 +20,8 @@ public class GuestNicknameGenerator {
 
     private final AiProperties aiProperties;
 
-    private static final List<String> FALLBACK_NICKNAMES = List.of(
-            "익명토끼", "낙서꾼", "그림왕", "붓질러", "색칠왕",
-            "몽상가", "도화지", "크레파스", "물감쟁이", "연필깎이");
+    private static final List<String> FALLBACK_NICKNAMES =
+            List.of("익명토끼", "낙서꾼", "그림왕", "붓질러", "색칠왕", "몽상가", "도화지", "크레파스", "물감쟁이", "연필깎이");
 
     public String generate() {
         try {
