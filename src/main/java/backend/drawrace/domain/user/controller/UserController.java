@@ -75,8 +75,7 @@ public class UserController {
     @Operation(summary = "프로필 이미지 업로드", description = "이미지 파일을 업로드하여 프로필 이미지를 교체합니다. (jpg, jpeg, png, gif, webp)")
     @PostMapping(value = "/me/profile-image", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public RsData<UserInfoResponse> updateProfileImage(
-            @AuthenticationPrincipal SecurityUser securityUser,
-            @RequestPart MultipartFile image) {
+            @AuthenticationPrincipal SecurityUser securityUser, @RequestPart MultipartFile image) {
         UserInfoResponse response = userService.updateProfileImage(securityUser.getUserId(), image);
         return new RsData<>("200-6", "프로필 이미지가 성공적으로 변경되었습니다.", response);
     }
