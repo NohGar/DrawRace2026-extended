@@ -4,12 +4,14 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import backend.drawrace.domain.chat.dto.ChatMessageDto;
+import backend.drawrace.domain.chat.service.AiChatService;
 import backend.drawrace.domain.room.dto.request.CreateRoomReq;
 import backend.drawrace.domain.room.dto.response.GetRoomListRes;
 import backend.drawrace.domain.room.dto.response.RankingRes;
@@ -35,6 +37,7 @@ public class RoomService {
     private final UserRepository userRepository;
     private final RankingService rankingService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final ObjectProvider<AiChatService> aiChatServiceProvider;
 
     @Transactional
     public RoomInfoRes createRoom(CreateRoomReq req, Long userId) {
@@ -204,6 +207,11 @@ public class RoomService {
 
         participantRepository.save(aiParticipant);
         room.addParticipant(aiParticipant);
+
+        AiChatService aiChatService = aiChatServiceProvider.getIfAvailable();
+        if (aiChatService != null) {
+            aiChatService.triggerOnAiJoin(roomId, aiUser.getNickname());
+        }
 
         return getRoomDetail(roomId);
     }

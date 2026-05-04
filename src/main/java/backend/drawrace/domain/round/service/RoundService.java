@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import backend.drawrace.domain.chat.dto.ChatMessageDto;
+import backend.drawrace.domain.chat.service.AiChatService;
 import backend.drawrace.domain.room.entity.Participant;
 import backend.drawrace.domain.room.entity.Room;
 import backend.drawrace.domain.room.repository.ParticipantRepository;
@@ -48,6 +49,7 @@ public class RoundService {
     private final AiInferenceService aiInferenceService;
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectProvider<AiSubmissionService> aiSubmissionServiceProvider;
+    private final ObjectProvider<AiChatService> aiChatServiceProvider;
 
     /**
      * 게임 시작 처리
@@ -74,6 +76,7 @@ public class RoundService {
         List<Participant> participants = participantRepository.findByRoomId(roomId);
         saveRoundParticipants(savedRound, participants);
         triggerAiIfPresent(savedRound, participants);
+        triggerAiChatOnRoundStart(roomId, keyword, participants);
 
         RoundStartResponse response = RoundStartResponse.from(savedRound);
 
@@ -249,6 +252,8 @@ public class RoundService {
                 .message("라운드 승리자: " + winnerNickname + "님! 축하합니다.")
                 .build();
         messagingTemplate.convertAndSend("/sub/rooms/" + roomId + "/chat", winnerNotice);
+
+        triggerAiChatOnRoundEnd(roomId, round.getKeyword(), submissions, roundWinner);
 
         return handleAfterRoundFinished(
                 round, submittedAiResult, winnerSubmission, submittedCount, totalParticipantCount, roundWinner);
@@ -464,6 +469,32 @@ public class RoundService {
                 .build();
 
         messagingTemplate.convertAndSend("/sub/rooms/" + round.getRoom().getId(), event);
+    }
+
+    private void triggerAiChatOnRoundStart(Long roomId, String keyword, List<Participant> participants) {
+        AiChatService service = aiChatServiceProvider.getIfAvailable();
+        if (service == null) return;
+
+        participants.stream()
+                .filter(p -> p.getUserId().isAi())
+                .findFirst()
+                .ifPresent(ai -> service.triggerOnRoundStart(
+                        roomId, keyword, ai.getUserId().getNickname()));
+    }
+
+    private void triggerAiChatOnRoundEnd(
+            Long roomId, String keyword, List<RoundSubmission> submissions, Participant roundWinner) {
+        AiChatService service = aiChatServiceProvider.getIfAvailable();
+        if (service == null) return;
+
+        submissions.stream()
+                .map(RoundSubmission::getParticipant)
+                .filter(p -> p.getUserId().isAi())
+                .findFirst()
+                .ifPresent(ai -> {
+                    boolean aiIsWinner = ai.getId().equals(roundWinner.getId());
+                    service.triggerOnRoundEnd(roomId, keyword, ai.getUserId().getNickname(), aiIsWinner);
+                });
     }
 
     private void sendFinalWinnerNotice(Long roomId, String nickname) {
