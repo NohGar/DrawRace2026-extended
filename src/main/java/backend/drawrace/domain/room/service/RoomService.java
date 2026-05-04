@@ -336,9 +336,7 @@ public class RoomService {
     }
 
     private List<Participant> getActiveParticipants(Room room) {
-        return room.getParticipants().stream()
-                .filter(p -> !p.isLeft())
-                .toList();
+        return room.getParticipants().stream().filter(p -> !p.isLeft()).toList();
     }
 
     @Transactional

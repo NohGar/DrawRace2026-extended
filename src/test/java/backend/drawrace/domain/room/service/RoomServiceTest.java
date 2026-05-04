@@ -109,7 +109,8 @@ class RoomServiceTest {
 
         // 첫 번째, 두 번째 시도는 충돌 발생, 세 번째에 성공하도록 설정
         when(roomRepository.findById(roomId)).thenReturn(Optional.of(room));
-        when(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, userId)).thenReturn(false);
+        when(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, userId))
+                .thenReturn(false);
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
         // save할 때 낙관적 락 예외를 두 번 던지게 함
@@ -139,18 +140,12 @@ class RoomServiceTest {
         User user = createUser(userId, "유저A");
         User otherUser = createUser(otherUserId, "유저B");
 
-        Participant participant = Participant.builder()
-                .userId(user)
-                .room(room)
-                .isHost(false)
-                .build();
+        Participant participant =
+                Participant.builder().userId(user).room(room).isHost(false).build();
         setField(participant, "id", 100L);
 
-        Participant otherParticipant = Participant.builder()
-                .userId(otherUser)
-                .room(room)
-                .isHost(true)
-                .build();
+        Participant otherParticipant =
+                Participant.builder().userId(otherUser).room(room).isHost(true).build();
         setField(otherParticipant, "id", 101L);
 
         room.getParticipants().add(participant);
@@ -187,11 +182,8 @@ class RoomServiceTest {
         setField(room, "curPlayers", (short) 2);
 
         User user = createUser(userId, "유저A");
-        Participant participant = Participant.builder()
-                .userId(user)
-                .room(room)
-                .isHost(false)
-                .build();
+        Participant participant =
+                Participant.builder().userId(user).room(room).isHost(false).build();
         setField(participant, "id", 100L);
 
         room.getParticipants().add(participant);
@@ -380,18 +372,12 @@ class RoomServiceTest {
         User user = createUser(userId, "유저A");
         User otherUser = createUser(otherUserId, "유저B");
 
-        Participant participant = Participant.builder()
-                .userId(user)
-                .room(room)
-                .isHost(false)
-                .build();
+        Participant participant =
+                Participant.builder().userId(user).room(room).isHost(false).build();
         setField(participant, "id", 100L);
 
-        Participant otherParticipant = Participant.builder()
-                .userId(otherUser)
-                .room(room)
-                .isHost(true)
-                .build();
+        Participant otherParticipant =
+                Participant.builder().userId(otherUser).room(room).isHost(true).build();
         setField(otherParticipant, "id", 101L);
 
         room.getParticipants().add(participant);
