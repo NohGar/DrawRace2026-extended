@@ -63,7 +63,7 @@ public class UserServiceImpl implements UserService {
             throw new ServiceException("409-1", "이미 사용 중인 닉네임입니다.");
         }
 
-        user.updateProfile(request.nickname(), request.profileImageUrl());
+        user.updateProfile(request.nickname(), null);
         return UserInfoResponse.from(user);
     }
 
@@ -90,10 +90,13 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public void deleteUser(Long userId) {
-        if (!userRepository.existsById(userId)) {
-            throw new ServiceException("404-1", "존재하지 않는 유저입니다. ID: " + userId);
+        User user = userRepository
+                .findById(userId)
+                .orElseThrow(() -> new ServiceException("404-1", "존재하지 않는 유저입니다. ID: " + userId));
+        if (user.getProfileImageUrl() != null) {
+            fileStorageService.delete(user.getProfileImageUrl());
         }
         refreshTokenRepository.deleteById(userId);
-        userRepository.deleteById(userId);
+        userRepository.delete(user);
     }
 }
