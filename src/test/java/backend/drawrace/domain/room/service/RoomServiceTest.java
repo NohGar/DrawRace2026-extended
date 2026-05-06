@@ -469,6 +469,96 @@ class RoomServiceTest {
     }
 
     @Test
+    @DisplayName("게임 전 마지막 유저 퇴장 시 방이 삭제된다")
+    void leaveRoom_lastUserLeaveBeforeGame_roomDeleted() throws Exception {
+        Long roomId = 10L;
+        Long hostId = 1L;
+
+        Room room = createRoom(roomId, "대기방", hostId);
+
+        User hostUser = createUser(hostId, "방장");
+        Participant hostParticipant =
+                Participant.builder().userId(hostUser).room(room).isHost(true).build();
+        setField(hostParticipant, "id", 100L);
+
+        room.getParticipants().add(hostParticipant);
+
+        given(participantRepository.findByRoomIdAndUserId_IdAndIsLeftFalse(roomId, hostId))
+                .willReturn(Optional.of(hostParticipant));
+
+        RoomUpdateResponse response = roomService.leaveRoom(roomId, hostId);
+
+        assertThat(response).isNull();
+        verify(participantRepository).delete(hostParticipant);
+        verify(roomRepository).delete(room);
+    }
+
+    @Test
+    @DisplayName("게임 중 방장 퇴장 시 AI만 남으면 방이 삭제된다")
+    void leaveRoom_hostLeaveDuringGame_onlyAiRemains_roomDeleted() throws Exception {
+        Long roomId = 10L;
+        Long hostId = 1L;
+
+        Room room = createRoom(roomId, "게임방", hostId);
+        setField(room, "isPlaying", true);
+        setField(room, "curPlayers", (short) 2);
+
+        User hostUser = createUser(hostId, "방장");
+        User aiUser = User.builder().nickname("AI").isAi(true).build();
+        setField(aiUser, "id", 99L);
+
+        Participant hostParticipant =
+                Participant.builder().userId(hostUser).room(room).isHost(true).build();
+        Participant aiParticipant =
+                Participant.builder().userId(aiUser).room(room).isHost(false).build();
+        setField(hostParticipant, "id", 100L);
+        setField(aiParticipant, "id", 101L);
+
+        room.getParticipants().add(hostParticipant);
+        room.getParticipants().add(aiParticipant);
+
+        given(participantRepository.findByRoomIdAndUserId_IdAndIsLeftFalse(roomId, hostId))
+                .willReturn(Optional.of(hostParticipant));
+
+        RoomUpdateResponse response = roomService.leaveRoom(roomId, hostId);
+
+        assertThat(response).isNull();
+        verify(roundSubmissionRepository).deleteByRoomId(roomId);
+        verify(roundParticipantRepository).deleteByRoomId(roomId);
+        verify(roundRepository).deleteByRoomId(roomId);
+        verify(roomRepository).delete(room);
+    }
+
+    @Test
+    @DisplayName("목록 조회 시 curPlayers는 실제 활성 인원(isLeft=false) 기준으로 반환된다")
+    void getRoomList_curPlayersReflectsActiveParticipantCount() throws Exception {
+        Long roomId = 1L;
+        Long hostId = 1L;
+
+        Room room = createRoom(roomId, "테스트방", hostId);
+        setField(room, "curPlayers", (short) 2); // 필드값은 2지만 실제 활성 인원은 1
+
+        User hostUser = createUser(hostId, "방장");
+        User leftUser = createUser(2L, "퇴장유저");
+
+        Participant hostParticipant =
+                Participant.builder().userId(hostUser).room(room).isHost(true).build();
+        Participant leftParticipant =
+                Participant.builder().userId(leftUser).room(room).isHost(false).build();
+        leftParticipant.leave(); // isLeft=true
+
+        room.getParticipants().add(hostParticipant);
+        room.getParticipants().add(leftParticipant);
+
+        given(roomRepository.findAll()).willReturn(List.of(room));
+
+        List<GetRoomListRes> result = roomService.getRoomList();
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).curPlayers()).isEqualTo((short) 1); // 활성 인원 기준
+    }
+
+    @Test
     @DisplayName("목록 조회 시 활성 인간 참가자가 없는 방은 반환되지 않는다")
     void getRoomList_excludesRoomsWithNoActiveHumanParticipants() throws Exception {
         Long roomId = 1L;

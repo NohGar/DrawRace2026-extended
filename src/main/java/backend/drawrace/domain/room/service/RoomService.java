@@ -82,10 +82,14 @@ public class RoomService {
                             .findFirst()
                             .orElse("Unknown");
 
+                    short activePlayers = (short) room.getParticipants().stream()
+                            .filter(p -> !p.isLeft())
+                            .count();
+
                     return GetRoomListRes.builder()
                             .roomId(room.getId())
                             .title(room.getTitle())
-                            .curPlayers(room.getCurPlayers())
+                            .curPlayers(activePlayers)
                             .maxPlayers(room.getMaxPlayers())
                             .isPlaying(room.isPlaying())
                             .hostNickname(hostNickname)
@@ -263,7 +267,11 @@ public class RoomService {
 
         boolean playing = room.isPlaying();
 
-        if (participant.isHost() && room.getCurPlayers() > 1) {
+        long activeCount = room.getParticipants().stream()
+                .filter(p -> !p.isLeft())
+                .count();
+
+        if (participant.isHost() && activeCount > 1) {
             Optional<Participant> nextHostOpt = room.getParticipants().stream()
                     .filter(p -> !p.equals(participant))
                     .filter(p -> !p.isLeft())
