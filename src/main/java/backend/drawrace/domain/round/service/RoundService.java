@@ -4,12 +4,14 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import backend.drawrace.domain.chat.dto.ChatMessageDto;
 import backend.drawrace.domain.chat.service.AiChatService;
+import backend.drawrace.domain.round.event.GameStartedEvent;
 import backend.drawrace.domain.room.entity.Participant;
 import backend.drawrace.domain.room.entity.Room;
 import backend.drawrace.domain.room.repository.ParticipantRepository;
@@ -50,6 +52,7 @@ public class RoundService {
     private final RoundValidator roundValidator;
     private final AiInferenceService aiInferenceService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final ApplicationEventPublisher eventPublisher;
     private final ObjectProvider<AiSubmissionService> aiSubmissionServiceProvider;
     private final ObjectProvider<AiChatService> aiChatServiceProvider;
 
@@ -82,15 +85,7 @@ public class RoundService {
 
         RoundStartResponse response = RoundStartResponse.from(savedRound);
 
-        ChatMessageDto startNotice = ChatMessageDto.builder()
-                .type(ChatMessageDto.MessageType.NOTICE)
-                .roomId(roomId)
-                .sender("System")
-                .message("게임이 시작되었습니다! 주제에 맞춰 그림을 그려주세요.")
-                .build();
-        messagingTemplate.convertAndSend("/sub/rooms/" + roomId + "/chat", startNotice);
-
-        messagingTemplate.convertAndSend("/sub/rooms/" + roomId, response);
+        eventPublisher.publishEvent(new GameStartedEvent(roomId, response));
 
         return response;
     }
