@@ -11,7 +11,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import backend.drawrace.domain.chat.dto.ChatMessageDto;
 import backend.drawrace.domain.chat.service.AiChatService;
-import backend.drawrace.domain.round.event.GameStartedEvent;
 import backend.drawrace.domain.room.entity.Participant;
 import backend.drawrace.domain.room.entity.Room;
 import backend.drawrace.domain.room.repository.ParticipantRepository;
@@ -28,6 +27,7 @@ import backend.drawrace.domain.round.entity.Round;
 import backend.drawrace.domain.round.entity.RoundParticipant;
 import backend.drawrace.domain.round.entity.RoundStatus;
 import backend.drawrace.domain.round.entity.RoundSubmission;
+import backend.drawrace.domain.round.event.GameStartedEvent;
 import backend.drawrace.domain.round.repository.RoundParticipantRepository;
 import backend.drawrace.domain.round.repository.RoundRepository;
 import backend.drawrace.domain.round.repository.RoundSubmissionRepository;
