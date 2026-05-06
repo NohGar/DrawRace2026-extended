@@ -49,7 +49,7 @@ public class RoomService {
                 .password(req.password())
                 .hostId(userId)
                 .totalRounds(req.totalRounds())
-                .maxPlayers((short) 4)
+                .maxPlayers(req.maxPlayers())
                 .build();
 
         roomRepository.save(room);

@@ -56,7 +56,8 @@ class ChatControllerTest {
         User user = User.builder().nickname(realNickname).build();
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        when(chatModerationService.filterMessage(anyString())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(chatModerationService.filterMessage(anyLong(), anyString()))
+                .thenAnswer(invocation -> invocation.getArgument(1));
 
         chatController.sendChatMessage(roomId, requestDto, auth);
 
@@ -96,9 +97,9 @@ class ChatControllerTest {
 
         ChatMessageDto requestDto = ChatMessageDto.builder().message(raw).build();
 
-        User user = User.builder().nickname("채은").build();
+        User user = User.builder().nickname("유저A").build();
         when(userRepository.findById(anyLong())).thenReturn(Optional.of(user));
-        when(chatModerationService.filterMessage(raw)).thenReturn(filtered); // 가짜 응답
+        when(chatModerationService.filterMessage(anyLong(), eq(raw))).thenReturn(filtered); // 가짜 응답
 
         SecurityUser securityUser = new SecurityUser(1L, "test@test.com");
         Authentication auth = new UsernamePasswordAuthenticationToken(securityUser, null, null);

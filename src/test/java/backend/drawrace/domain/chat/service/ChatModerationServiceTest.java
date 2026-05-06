@@ -7,36 +7,33 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
+import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import backend.drawrace.global.config.AiProperties;
+
 @ExtendWith(MockitoExtension.class)
 class ChatModerationServiceTest {
+
+    @Mock
+    private AiProperties aiProperties;
 
     @Spy
     @InjectMocks
     private ChatModerationService chatModerationService;
 
     @Test
-    @DisplayName("AI가 UNSAFE 판정을 내리면 메시지가 경고 문구로 바뀐다")
-    void shouldFilterUnsafeMessage() {
-        String input = "나쁜말";
-        doReturn("UNSAFE").when(chatModerationService).getAiDecision(input);
+    @DisplayName("AI가 비속어를 발견하면 해당 단어만 ****로 치환된 문장을 반환한다")
+    void shouldReturnFilteredMessage() {
+        String input = "야 이 바보야";
+        String expected = "야 이 ****야";
 
-        String result = chatModerationService.filterMessage(input);
+        doReturn(expected).when(chatModerationService).getAiDecision(input);
 
-        assertThat(result).isEqualTo("⚠️ 클린한 채팅 문화를 만들어주세요!");
-    }
+        String result = chatModerationService.filterMessage(1L, input);
 
-    @Test
-    @DisplayName("AI가 SAFE 판정을 내리면 원문이 그대로 유지된다")
-    void shouldKeepOriginalMessageWhenSafe() {
-        String input = "안녕하세요";
-        doReturn("SAFE").when(chatModerationService).getAiDecision(input);
-
-        String result = chatModerationService.filterMessage(input);
-
-        assertThat(result).isEqualTo("안녕하세요");
+        assertThat(result).isEqualTo(expected);
     }
 
     @Test
@@ -46,8 +43,21 @@ class ChatModerationServiceTest {
         String input = "테스트";
         doThrow(new RuntimeException("API 서버 다운")).when(chatModerationService).getAiDecision(input);
 
-        String result = chatModerationService.filterMessage(input);
+        String result = chatModerationService.filterMessage(1L, input);
 
         assertThat(result).isEqualTo("테스트");
+    }
+
+    @Test
+    @DisplayName("1초 이내에 연속으로 채팅을 보내면 도배 에러가 발생한다")
+    void shouldThrowExceptionWhenSpamming() {
+        Long userId = 1L;
+        String input = "안녕하세요";
+
+        chatModerationService.filterMessage(userId, input);
+
+        assertThatThrownBy(() -> chatModerationService.filterMessage(userId, input))
+                .isInstanceOf(backend.drawrace.global.exception.ServiceException.class)
+                .hasFieldOrPropertyWithValue("resultCode", "429-1");
     }
 }
