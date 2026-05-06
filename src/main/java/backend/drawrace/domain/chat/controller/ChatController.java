@@ -39,7 +39,8 @@ public class ChatController {
                 .orElseThrow(() -> new ServiceException("404-1", "유저를 찾을 수 없습니다."));
 
         // AI 검열 실행
-        String filteredMessage = chatModerationService.filterMessage(chatMessage.getMessage());
+        String filteredMessage =
+                chatModerationService.filterMessage(securityUser.getUserId(), chatMessage.getMessage());
 
         chatMessage.setSender(user.getNickname());
         chatMessage.setMessage(filteredMessage);
