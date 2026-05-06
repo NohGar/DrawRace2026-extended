@@ -13,6 +13,9 @@ import org.springframework.transaction.annotation.Transactional;
 import backend.drawrace.domain.chat.dto.ChatMessageDto;
 import backend.drawrace.domain.chat.service.AiChatService;
 import backend.drawrace.domain.room.dto.request.CreateRoomReq;
+import backend.drawrace.domain.round.repository.RoundParticipantRepository;
+import backend.drawrace.domain.round.repository.RoundRepository;
+import backend.drawrace.domain.round.repository.RoundSubmissionRepository;
 import backend.drawrace.domain.room.dto.response.GetRoomListRes;
 import backend.drawrace.domain.room.dto.response.RankingRes;
 import backend.drawrace.domain.room.dto.response.RoomInfoRes;
@@ -38,6 +41,9 @@ public class RoomService {
     private final RankingService rankingService;
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectProvider<AiChatService> aiChatServiceProvider;
+    private final RoundSubmissionRepository roundSubmissionRepository;
+    private final RoundParticipantRepository roundParticipantRepository;
+    private final RoundRepository roundRepository;
 
     @Transactional
     public RoomInfoRes createRoom(CreateRoomReq req, Long userId) {
@@ -66,6 +72,8 @@ public class RoomService {
 
     public List<GetRoomListRes> getRoomList() {
         return roomRepository.findAll().stream()
+                .filter(room -> room.getParticipants().stream()
+                        .anyMatch(p -> !p.isLeft() && !p.getUserId().isAi()))
                 .map(room -> {
                     String hostNickname = room.getParticipants().stream()
                             .filter(p -> !p.isLeft())
@@ -264,8 +272,7 @@ public class RoomService {
 
             if (nextHostOpt.isEmpty()) {
                 if (playing) {
-                    // 게임 중에는 round_participant FK 참조 때문에 participant를 삭제하지 않고 퇴장 상태만 변경
-                    room.markParticipantLeft(participant);
+                    deleteRoomWithGameData(room);
                 } else {
                     room.removeParticipant(participant);
                     participantRepository.delete(participant);
@@ -320,7 +327,8 @@ public class RoomService {
         }
 
         if (playing && onlyAiOrEmpty) {
-            room.finishGame();
+            deleteRoomWithGameData(room);
+            return null;
         }
 
         return RoomUpdateResponse.builder()
@@ -337,6 +345,15 @@ public class RoomService {
 
     private List<Participant> getActiveParticipants(Room room) {
         return room.getParticipants().stream().filter(p -> !p.isLeft()).toList();
+    }
+
+    // 게임 중 방 삭제: round_participant FK 순서대로 제거 후 room cascade 삭제
+    private void deleteRoomWithGameData(Room room) {
+        Long roomId = room.getId();
+        roundSubmissionRepository.deleteByRoomId(roomId);
+        roundParticipantRepository.deleteByRoomId(roomId);
+        roundRepository.deleteByRoomId(roomId);
+        roomRepository.delete(room);
     }
 
     @Transactional
