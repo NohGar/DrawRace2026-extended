@@ -12,6 +12,7 @@ import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -27,6 +28,7 @@ import backend.drawrace.domain.round.dto.AiInferenceResponse;
 import backend.drawrace.domain.round.dto.CurrentRoundResponse;
 import backend.drawrace.domain.round.dto.PlayerSubmittedEvent;
 import backend.drawrace.domain.round.dto.RoundStartResponse;
+import backend.drawrace.domain.round.event.GameStartedEvent;
 import backend.drawrace.domain.round.dto.RoundSubmissionResponse;
 import backend.drawrace.domain.round.dto.SubmitDrawingRequest;
 import backend.drawrace.domain.round.dto.SubmitDrawingResponse;
@@ -115,6 +117,11 @@ class RoundServiceTest {
         assertThat(response.getStatus()).isEqualTo(RoundStatus.IN_PROGRESS);
         assertThat(response.getStartedAt()).isNotNull();
         assertThat(room.isPlaying()).isTrue();
+
+        ArgumentCaptor<GameStartedEvent> eventCaptor = ArgumentCaptor.forClass(GameStartedEvent.class);
+        then(eventPublisher).should().publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getRoomId()).isEqualTo(roomId);
+        assertThat(eventCaptor.getValue().getRoundStartResponse().getKeyword()).isEqualTo("사과");
     }
 
     @Test
