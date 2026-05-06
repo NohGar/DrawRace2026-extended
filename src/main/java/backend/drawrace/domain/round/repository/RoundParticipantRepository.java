@@ -3,6 +3,7 @@ package backend.drawrace.domain.round.repository;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -33,4 +34,8 @@ public interface RoundParticipantRepository extends JpaRepository<RoundParticipa
           and p.isLeft = false
         """)
     List<RoundParticipant> findActiveByRoundId(@Param("roundId") Long roundId);
+
+    @Modifying(clearAutomatically = true)
+    @Query("DELETE FROM RoundParticipant rp WHERE rp.round.room.id = :roomId")
+    void deleteByRoomId(@Param("roomId") Long roomId);
 }

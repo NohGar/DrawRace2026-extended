@@ -37,6 +37,7 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http.csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .headers(headers -> headers.frameOptions(frame -> frame.sameOrigin()))
                 .authorizeHttpRequests(auth -> auth.requestMatchers(
                                 "/api/auth/signup", "/api/auth/login", "/api/auth/reissue", "/api/auth/guest")
                         .permitAll()
@@ -48,6 +49,8 @@ public class SecurityConfig {
                         .requestMatchers("/ws-draw/**")
                         .permitAll()
                         .requestMatchers("/api/ai/test", "/ai-test.html")
+                        .permitAll()
+                        .requestMatchers("/h2-console/**")
                         .permitAll()
                         .anyRequest()
                         .authenticated())
