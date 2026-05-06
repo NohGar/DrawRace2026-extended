@@ -13,9 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 import backend.drawrace.domain.chat.dto.ChatMessageDto;
 import backend.drawrace.domain.chat.service.AiChatService;
 import backend.drawrace.domain.room.dto.request.CreateRoomReq;
-import backend.drawrace.domain.round.repository.RoundParticipantRepository;
-import backend.drawrace.domain.round.repository.RoundRepository;
-import backend.drawrace.domain.round.repository.RoundSubmissionRepository;
 import backend.drawrace.domain.room.dto.response.GetRoomListRes;
 import backend.drawrace.domain.room.dto.response.RankingRes;
 import backend.drawrace.domain.room.dto.response.RoomInfoRes;
@@ -24,6 +21,9 @@ import backend.drawrace.domain.room.entity.Participant;
 import backend.drawrace.domain.room.entity.Room;
 import backend.drawrace.domain.room.repository.ParticipantRepository;
 import backend.drawrace.domain.room.repository.RoomRepository;
+import backend.drawrace.domain.round.repository.RoundParticipantRepository;
+import backend.drawrace.domain.round.repository.RoundRepository;
+import backend.drawrace.domain.round.repository.RoundSubmissionRepository;
 import backend.drawrace.domain.user.entity.User;
 import backend.drawrace.domain.user.repository.UserRepository;
 import backend.drawrace.global.exception.ServiceException;
@@ -267,9 +267,8 @@ public class RoomService {
 
         boolean playing = room.isPlaying();
 
-        long activeCount = room.getParticipants().stream()
-                .filter(p -> !p.isLeft())
-                .count();
+        long activeCount =
+                room.getParticipants().stream().filter(p -> !p.isLeft()).count();
 
         if (participant.isHost() && activeCount > 1) {
             Optional<Participant> nextHostOpt = room.getParticipants().stream()
