@@ -13,6 +13,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -58,6 +59,12 @@ class RoundServiceTimerTest {
     private KeywordGenerator keywordGenerator;
 
     @Mock
+    private RoundParticipantRepository roundParticipantRepository;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
+
+    @Mock
     private RoomService roomService;
 
     @Mock
@@ -65,9 +72,6 @@ class RoundServiceTimerTest {
 
     @Mock
     private AiInferenceService aiInferenceService;
-
-    @Mock
-    private RoundParticipantRepository roundParticipantRepository;
 
     @Mock
     private org.springframework.beans.factory.ObjectProvider<AiSubmissionService> aiSubmissionServiceProvider;
