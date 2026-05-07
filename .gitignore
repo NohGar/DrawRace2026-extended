@@ -40,5 +40,3 @@ out/
 .env.*
 !.env.example
 
-### Large data files ###
-src/main/resources/quickdraw/
