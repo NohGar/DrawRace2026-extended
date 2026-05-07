@@ -1,20 +1,24 @@
 package backend.drawrace.domain.round.service;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import backend.drawrace.domain.chat.dto.ChatMessageDto;
 import backend.drawrace.domain.chat.service.AiChatService;
+import backend.drawrace.domain.room.dto.response.GameEvent;
 import backend.drawrace.domain.room.entity.Participant;
 import backend.drawrace.domain.room.entity.Room;
 import backend.drawrace.domain.room.repository.ParticipantRepository;
 import backend.drawrace.domain.room.repository.RoomRepository;
+import backend.drawrace.domain.room.service.RoomService;
 import backend.drawrace.domain.round.dto.AiInferenceResponse;
 import backend.drawrace.domain.round.dto.CurrentRoundResponse;
 import backend.drawrace.domain.round.dto.PlayerSubmittedEvent;
@@ -55,6 +59,9 @@ public class RoundService {
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectProvider<AiSubmissionService> aiSubmissionServiceProvider;
     private final ObjectProvider<AiChatService> aiChatServiceProvider;
+    private final TaskScheduler taskScheduler;
+    private static final int ROUND_TIME_LIMIT = 20;
+    private final RoomService roomService;
 
     /**
      * 게임 시작 처리
@@ -76,7 +83,12 @@ public class RoundService {
         firstRound.start();
         room.startGame();
 
+        roomService.broadcastLobbyUpdate();
+
         Round savedRound = roundRepository.save(firstRound);
+
+        // 타이머 예약
+        scheduleRoundTimeout(savedRound.getId());
 
         // 라운드 참가자 등록은 현재 퇴장하지 않은 참가자만 대상으로 한다.
         List<Participant> participants = participantRepository.findByRoomIdAndIsLeftFalse(roomId);
@@ -84,11 +96,37 @@ public class RoundService {
         triggerAiIfPresent(savedRound, participants);
         triggerAiChatOnRoundStart(roomId, keyword, participants);
 
-        RoundStartResponse response = RoundStartResponse.from(savedRound);
+        RoundStartResponse response = RoundStartResponse.from(savedRound, ROUND_TIME_LIMIT);
 
         eventPublisher.publishEvent(new GameStartedEvent(roomId, response));
 
         return response;
+    }
+
+    // 지정된 시간 뒤에 라운드를 강제로 종료
+    public void scheduleRoundTimeout(Long roundId) {
+        taskScheduler.schedule(
+                () -> {
+                    handleRoundTimeout(roundId);
+                },
+                Instant.now().plusSeconds(ROUND_TIME_LIMIT));
+    }
+
+    @Transactional
+    public void handleRoundTimeout(Long roundId) {
+        Round round = roundRepository.findById(roundId).orElse(null);
+        if (round == null || round.getStatus() != RoundStatus.IN_PROGRESS) return;
+
+        log.info("20초 경과! 해당 방의 모든 클라이언트에 강제 제출 명령을 보냅니다. roundId={}", roundId);
+
+        // 현재까지 그린 걸 제출
+        // 구독 경로: /sub/rooms/{roomId}
+        messagingTemplate.convertAndSend(
+                "/sub/rooms/" + round.getRoom().getId(),
+                GameEvent.builder()
+                        .type("TIME_OVER") // 이벤트 타입 정의[cite: 12]
+                        .data(roundId)
+                        .build());
     }
 
     /**
@@ -283,6 +321,8 @@ public class RoundService {
             roundWinner.markWinner();
             room.finishGame();
 
+            roomService.broadcastLobbyUpdate();
+
             sendFinalWinnerNotice(room.getId(), roundWinner.getUserId().getNickname());
 
             return SubmitDrawingResponse.builder()
@@ -304,6 +344,8 @@ public class RoundService {
         // 아직 일반 라운드가 남아 있으면 다음 라운드 진행
         if (round.getRoundNumber() < room.getTotalRounds()) {
             Round nextRound = createNextRound(room, round.getRoundNumber() + 1);
+
+            scheduleRoundTimeout(nextRound.getId());
 
             // 다음 라운드 참가자 등록도 퇴장하지 않은 참가자만 대상으로 한다.
             List<Participant> participants = participantRepository.findByRoomIdAndIsLeftFalse(room.getId());
@@ -356,6 +398,8 @@ public class RoundService {
             finalWinner.markWinner();
             room.finishGame();
 
+            roomService.broadcastLobbyUpdate();
+
             sendFinalWinnerNotice(room.getId(), finalWinner.getUserId().getNickname());
 
             return SubmitDrawingResponse.builder()
@@ -376,6 +420,7 @@ public class RoundService {
 
         // 동점이면 결승 라운드 생성
         Round tieBreakerRound = createTieBreakerRound(room, round.getRoundNumber() + 1);
+        scheduleRoundTimeout(tieBreakerRound.getId()); // 타이머
         saveRoundParticipants(tieBreakerRound, topScorers);
         triggerAiIfPresent(tieBreakerRound, topScorers);
         triggerAiChatOnRoundStart(room.getId(), tieBreakerRound.getKeyword(), topScorers);

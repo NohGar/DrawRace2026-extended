@@ -18,8 +18,9 @@ public class RoundStartResponse {
     private String keyword;
     private RoundStatus status;
     private LocalDateTime startedAt;
+    private int timeLimit;
 
-    public static RoundStartResponse from(Round round) {
+    public static RoundStartResponse from(Round round, int timeLimit) {
         return RoundStartResponse.builder()
                 .roomId(round.getRoom().getId())
                 .roundId(round.getId())
@@ -27,6 +28,7 @@ public class RoundStartResponse {
                 .keyword(round.getKeyword())
                 .status(round.getStatus())
                 .startedAt(round.getStartedAt())
+                .timeLimit(timeLimit)
                 .build();
     }
 }

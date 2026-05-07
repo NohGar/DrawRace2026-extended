@@ -45,6 +45,12 @@ public class RoomService {
     private final RoundParticipantRepository roundParticipantRepository;
     private final RoundRepository roundRepository;
 
+    // 최신 방 목록을 로비에 알림
+    public void broadcastLobbyUpdate() {
+        List<GetRoomListRes> roomList = getRoomList(); //
+        messagingTemplate.convertAndSend("/sub/lobby", roomList); //
+    }
+
     @Transactional
     public RoomInfoRes createRoom(CreateRoomReq req, Long userId) {
         User user = userRepository.findById(userId).orElseThrow(() -> new ServiceException("404-1", "유저를 찾을 수 없습니다."));
@@ -66,6 +72,8 @@ public class RoomService {
 
         participantRepository.save(host);
         room.getParticipants().add(host);
+
+        broadcastLobbyUpdate();
 
         return getRoomDetail(room.getId());
     }
@@ -173,6 +181,8 @@ public class RoomService {
                         .build();
                 messagingTemplate.convertAndSend("/sub/rooms/" + roomId + "/chat", enterNotice);
 
+                broadcastLobbyUpdate();
+
                 return RoomUpdateResponse.builder()
                         .roomId(roomId)
                         .type("USER_ENTER")
@@ -231,6 +241,8 @@ public class RoomService {
         if (aiChatService != null) {
             aiChatService.triggerOnAiJoin(roomId, aiUser.getNickname());
         }
+
+        broadcastLobbyUpdate();
 
         return getRoomDetail(roomId);
     }
@@ -328,8 +340,13 @@ public class RoomService {
         boolean onlyAiOrEmpty = activeParticipants.isEmpty()
                 || activeParticipants.stream().allMatch(p -> p.getUserId().isAi());
 
-        if (!playing && onlyAiOrEmpty) {
+        if (onlyAiOrEmpty) {
+            roundSubmissionRepository.deleteByRoomId(roomId);
+            roundParticipantRepository.deleteByRoomId(roomId);
+            roundRepository.deleteByRoomId(roomId);
+
             roomRepository.delete(room);
+            broadcastLobbyUpdate();
             return null;
         }
 
@@ -337,6 +354,8 @@ public class RoomService {
             deleteRoomWithGameData(room);
             return null;
         }
+
+        broadcastLobbyUpdate();
 
         return RoomUpdateResponse.builder()
                 .roomId(roomId)
@@ -384,6 +403,8 @@ public class RoomService {
 
         room.removeParticipant(aiParticipant);
         participantRepository.delete(aiParticipant);
+
+        broadcastLobbyUpdate();
 
         return getRoomDetail(roomId);
     }

@@ -18,12 +18,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import backend.drawrace.domain.room.entity.Participant;
 import backend.drawrace.domain.room.entity.Room;
 import backend.drawrace.domain.room.repository.ParticipantRepository;
 import backend.drawrace.domain.room.repository.RoomRepository;
+import backend.drawrace.domain.room.service.RoomService;
 import backend.drawrace.domain.round.dto.AiInferenceResponse;
 import backend.drawrace.domain.round.dto.CurrentRoundResponse;
 import backend.drawrace.domain.round.dto.PlayerSubmittedEvent;
@@ -82,6 +84,12 @@ class RoundServiceTest {
     @Mock
     private org.springframework.beans.factory.ObjectProvider<backend.drawrace.domain.chat.service.AiChatService>
             aiChatServiceProvider;
+
+    @Mock
+    private TaskScheduler taskScheduler;
+
+    @Mock
+    private RoomService roomService;
 
     @InjectMocks
     private RoundService roundService;
