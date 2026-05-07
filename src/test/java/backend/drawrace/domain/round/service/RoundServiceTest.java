@@ -9,13 +9,14 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-import backend.drawrace.domain.room.service.RoomService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -24,6 +25,7 @@ import backend.drawrace.domain.room.entity.Participant;
 import backend.drawrace.domain.room.entity.Room;
 import backend.drawrace.domain.room.repository.ParticipantRepository;
 import backend.drawrace.domain.room.repository.RoomRepository;
+import backend.drawrace.domain.room.service.RoomService;
 import backend.drawrace.domain.round.dto.AiInferenceResponse;
 import backend.drawrace.domain.round.dto.CurrentRoundResponse;
 import backend.drawrace.domain.round.dto.PlayerSubmittedEvent;
@@ -35,6 +37,7 @@ import backend.drawrace.domain.round.entity.Round;
 import backend.drawrace.domain.round.entity.RoundParticipant;
 import backend.drawrace.domain.round.entity.RoundStatus;
 import backend.drawrace.domain.round.entity.RoundSubmission;
+import backend.drawrace.domain.round.event.GameStartedEvent;
 import backend.drawrace.domain.round.repository.RoundParticipantRepository;
 import backend.drawrace.domain.round.repository.RoundRepository;
 import backend.drawrace.domain.round.repository.RoundSubmissionRepository;
@@ -68,6 +71,9 @@ class RoundServiceTest {
 
     @Mock
     private SimpMessagingTemplate messagingTemplate;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @Mock
     private AiInferenceService aiInferenceService;
@@ -123,6 +129,11 @@ class RoundServiceTest {
         assertThat(response.getStatus()).isEqualTo(RoundStatus.IN_PROGRESS);
         assertThat(response.getStartedAt()).isNotNull();
         assertThat(room.isPlaying()).isTrue();
+
+        ArgumentCaptor<GameStartedEvent> eventCaptor = ArgumentCaptor.forClass(GameStartedEvent.class);
+        then(eventPublisher).should().publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().getRoomId()).isEqualTo(roomId);
+        assertThat(eventCaptor.getValue().getRoundStartResponse().getKeyword()).isEqualTo("사과");
     }
 
     @Test

@@ -21,6 +21,9 @@ import backend.drawrace.domain.room.entity.Participant;
 import backend.drawrace.domain.room.entity.Room;
 import backend.drawrace.domain.room.repository.ParticipantRepository;
 import backend.drawrace.domain.room.repository.RoomRepository;
+import backend.drawrace.domain.round.repository.RoundParticipantRepository;
+import backend.drawrace.domain.round.repository.RoundRepository;
+import backend.drawrace.domain.round.repository.RoundSubmissionRepository;
 import backend.drawrace.domain.user.entity.User;
 import backend.drawrace.domain.user.repository.UserRepository;
 import backend.drawrace.global.exception.ServiceException;
@@ -38,6 +41,9 @@ public class RoomService {
     private final RankingService rankingService;
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectProvider<AiChatService> aiChatServiceProvider;
+    private final RoundSubmissionRepository roundSubmissionRepository;
+    private final RoundParticipantRepository roundParticipantRepository;
+    private final RoundRepository roundRepository;
 
     // 최신 방 목록을 로비에 알림
     public void broadcastLobbyUpdate() {
@@ -74,6 +80,8 @@ public class RoomService {
 
     public List<GetRoomListRes> getRoomList() {
         return roomRepository.findAll().stream()
+                .filter(room -> room.getParticipants().stream()
+                        .anyMatch(p -> !p.isLeft() && !p.getUserId().isAi()))
                 .map(room -> {
                     String hostNickname = room.getParticipants().stream()
                             .filter(p -> !p.isLeft())
@@ -82,10 +90,14 @@ public class RoomService {
                             .findFirst()
                             .orElse("Unknown");
 
+                    short activePlayers = (short) room.getParticipants().stream()
+                            .filter(p -> !p.isLeft())
+                            .count();
+
                     return GetRoomListRes.builder()
                             .roomId(room.getId())
                             .title(room.getTitle())
-                            .curPlayers(room.getCurPlayers())
+                            .curPlayers(activePlayers)
                             .maxPlayers(room.getMaxPlayers())
                             .isPlaying(room.isPlaying())
                             .hostNickname(hostNickname)
@@ -267,7 +279,10 @@ public class RoomService {
 
         boolean playing = room.isPlaying();
 
-        if (participant.isHost() && room.getCurPlayers() > 1) {
+        long activeCount =
+                room.getParticipants().stream().filter(p -> !p.isLeft()).count();
+
+        if (participant.isHost() && activeCount > 1) {
             Optional<Participant> nextHostOpt = room.getParticipants().stream()
                     .filter(p -> !p.equals(participant))
                     .filter(p -> !p.isLeft())
@@ -276,8 +291,7 @@ public class RoomService {
 
             if (nextHostOpt.isEmpty()) {
                 if (playing) {
-                    // 게임 중에는 round_participant FK 참조 때문에 participant를 삭제하지 않고 퇴장 상태만 변경
-                    room.markParticipantLeft(participant);
+                    deleteRoomWithGameData(room);
                 } else {
                     room.removeParticipant(participant);
                     participantRepository.delete(participant);
@@ -327,13 +341,18 @@ public class RoomService {
                 || activeParticipants.stream().allMatch(p -> p.getUserId().isAi());
 
         if (onlyAiOrEmpty) {
+            roundSubmissionRepository.deleteByRoomId(roomId);
+            roundParticipantRepository.deleteByRoomId(roomId);
+            roundRepository.deleteByRoomId(roomId);
+
             roomRepository.delete(room);
             broadcastLobbyUpdate();
             return null;
         }
 
         if (playing && onlyAiOrEmpty) {
-            room.finishGame();
+            deleteRoomWithGameData(room);
+            return null;
         }
 
         broadcastLobbyUpdate();
@@ -352,6 +371,15 @@ public class RoomService {
 
     private List<Participant> getActiveParticipants(Room room) {
         return room.getParticipants().stream().filter(p -> !p.isLeft()).toList();
+    }
+
+    // 게임 중 방 삭제: round_participant FK 순서대로 제거 후 room cascade 삭제
+    private void deleteRoomWithGameData(Room room) {
+        Long roomId = room.getId();
+        roundSubmissionRepository.deleteByRoomId(roomId);
+        roundParticipantRepository.deleteByRoomId(roomId);
+        roundRepository.deleteByRoomId(roomId);
+        roomRepository.delete(room);
     }
 
     @Transactional

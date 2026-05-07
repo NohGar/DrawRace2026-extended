@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
@@ -30,6 +31,7 @@ import backend.drawrace.domain.round.entity.Round;
 import backend.drawrace.domain.round.entity.RoundParticipant;
 import backend.drawrace.domain.round.entity.RoundStatus;
 import backend.drawrace.domain.round.entity.RoundSubmission;
+import backend.drawrace.domain.round.event.GameStartedEvent;
 import backend.drawrace.domain.round.repository.RoundParticipantRepository;
 import backend.drawrace.domain.round.repository.RoundRepository;
 import backend.drawrace.domain.round.repository.RoundSubmissionRepository;
@@ -54,6 +56,7 @@ public class RoundService {
     private final RoundValidator roundValidator;
     private final AiInferenceService aiInferenceService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final ApplicationEventPublisher eventPublisher;
     private final ObjectProvider<AiSubmissionService> aiSubmissionServiceProvider;
     private final ObjectProvider<AiChatService> aiChatServiceProvider;
     private final TaskScheduler taskScheduler;
@@ -95,15 +98,7 @@ public class RoundService {
 
         RoundStartResponse response = RoundStartResponse.from(savedRound, ROUND_TIME_LIMIT);
 
-        ChatMessageDto startNotice = ChatMessageDto.builder()
-                .type(ChatMessageDto.MessageType.NOTICE)
-                .roomId(roomId)
-                .sender("System")
-                .message("게임이 시작되었습니다! 주제에 맞춰 그림을 그려주세요.")
-                .build();
-        messagingTemplate.convertAndSend("/sub/rooms/" + roomId + "/chat", startNotice);
-
-        messagingTemplate.convertAndSend("/sub/rooms/" + roomId, response);
+        eventPublisher.publishEvent(new GameStartedEvent(roomId, response));
 
         return response;
     }

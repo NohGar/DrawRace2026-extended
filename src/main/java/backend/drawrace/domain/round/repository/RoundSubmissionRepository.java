@@ -3,6 +3,7 @@ package backend.drawrace.domain.round.repository;
 import java.util.List;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -34,4 +35,8 @@ public interface RoundSubmissionRepository extends JpaRepository<RoundSubmission
         """)
     List<RoundSubmission> findAllWithParticipantAndUserByRoundIdOrderByScoreDescCreatedAtAsc(
             @Param("roundId") Long roundId);
+
+    @Modifying(clearAutomatically = true)
+    @Query("DELETE FROM RoundSubmission rs WHERE rs.round.room.id = :roomId")
+    void deleteByRoomId(@Param("roomId") Long roomId);
 }
