@@ -7,6 +7,7 @@ import static org.mockito.Mockito.lenient;
 import java.util.List;
 import java.util.Optional;
 
+import backend.drawrace.domain.room.service.RoomService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,6 +32,7 @@ import backend.drawrace.domain.round.repository.RoundRepository;
 import backend.drawrace.domain.round.repository.RoundSubmissionRepository;
 import backend.drawrace.domain.round.validator.RoundValidator;
 import backend.drawrace.domain.user.entity.User;
+import org.springframework.scheduling.TaskScheduler;
 
 @ExtendWith(MockitoExtension.class)
 class RoundServiceWebSocketTest {
@@ -70,6 +72,12 @@ class RoundServiceWebSocketTest {
 
     @Mock
     private ObjectProvider<backend.drawrace.domain.chat.service.AiChatService> aiChatServiceProvider;
+
+    @Mock
+    private TaskScheduler taskScheduler;
+
+    @Mock
+    private RoomService roomService;
 
     @Test
     @DisplayName("라운드 종료 시 웹소켓으로 결과가 전송되는지 확인한다")
