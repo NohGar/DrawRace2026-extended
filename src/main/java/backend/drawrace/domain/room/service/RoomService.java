@@ -107,7 +107,8 @@ public class RoomService {
     }
 
     public RoomInfoRes getRoomDetail(Long roomId) {
-        Room room = roomRepository.findById(roomId).orElseThrow(() -> new ServiceException("404-2", "방을 찾을 수 없습니다."));
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new ServiceException("404-2", "방을 찾을 수 없습니다."));
 
         List<RoomInfoRes.ParticipantDto> participantDtos = room.getParticipants().stream()
                 .filter(p -> !p.isLeft())
@@ -118,10 +119,12 @@ public class RoomService {
                         p.getUserId().isAi()))
                 .toList();
 
+        short activePlayers = (short) participantDtos.size();
+
         return new RoomInfoRes(
                 room.getId(),
                 room.getTitle(),
-                room.getCurPlayers(),
+                activePlayers,
                 room.getMaxPlayers(),
                 room.getTotalRounds(),
                 room.getHostId(),
@@ -249,9 +252,22 @@ public class RoomService {
 
     @Transactional
     public RoomUpdateResponse leaveRoom(Long roomId, Long userId) {
-        Participant participant = participantRepository
-                .findByRoomIdAndUserId_IdAndIsLeftFalse(roomId, userId)
-                .orElseThrow(() -> new ServiceException("404-3", "참여 정보를 찾을 수 없습니다."));
+        Optional<Participant> participantOpt =
+                participantRepository.findByRoomIdAndUserId_Id(roomId, userId);
+
+        if (participantOpt.isEmpty()) {
+            cleanupOrRepairRoom(roomId);
+            broadcastLobbyUpdate();
+            return null;
+        }
+
+        Participant participant = participantOpt.get();
+
+        if (participant.isLeft()) {
+            cleanupOrRepairRoom(roomId);
+            broadcastLobbyUpdate();
+            return null;
+        }
 
         return leaveParticipant(participant);
     }
@@ -268,100 +284,83 @@ public class RoomService {
         return leaveParticipant(participantOpt.get());
     }
 
+    private boolean cleanupOrRepairRoom(Long roomId) {
+        Room room = roomRepository.findById(roomId)
+                .orElse(null);
+
+        if (room == null) {
+            return true;
+        }
+
+        long activeHumanCount = participantRepository.countActiveHumanByRoomId(roomId);
+
+        if (activeHumanCount == 0) {
+            deleteRoomWithGameData(room);
+            return true;
+        }
+
+        List<Participant> activeParticipants =
+                participantRepository.findActiveParticipantsByRoomId(roomId);
+
+        ensureHost(room, activeParticipants);
+
+        return false;
+    }
+
     private RoomUpdateResponse leaveParticipant(Participant participant) {
         Room room = participant.getRoom();
         Long roomId = room.getId();
 
         User user = participant.getUserId();
         Long leaverId = user.getId();
-        Long newHostId = null;
-        String nextHostNickname = "";
 
         boolean playing = room.isPlaying();
 
-        long activeCount =
-                room.getParticipants().stream().filter(p -> !p.isLeft()).count();
-
-        if (participant.isHost() && activeCount > 1) {
-            Optional<Participant> nextHostOpt = room.getParticipants().stream()
-                    .filter(p -> !p.equals(participant))
-                    .filter(p -> !p.isLeft())
-                    .filter(p -> !p.getUserId().isAi())
-                    .findFirst();
-
-            if (nextHostOpt.isEmpty()) {
-                if (playing) {
-                    deleteRoomWithGameData(room);
-                } else {
-                    room.removeParticipant(participant);
-                    participantRepository.delete(participant);
-                    roomRepository.delete(room);
-                }
-                return null;
-            }
-
-            Participant nextHost = nextHostOpt.get();
-            nextHost.makeHost();
-            room.changeHost(nextHost.getUserId().getId());
-
-            newHostId = nextHost.getUserId().getId();
-            nextHostNickname = nextHost.getUserId().getNickname();
-        }
-
-        if (newHostId != null) {
-            ChatMessageDto hostNotice = ChatMessageDto.builder()
-                    .type(ChatMessageDto.MessageType.NOTICE)
-                    .roomId(roomId)
-                    .sender("System")
-                    .message("방장이 " + nextHostNickname + "님으로 변경되었습니다.")
-                    .build();
-            messagingTemplate.convertAndSend("/sub/rooms/" + roomId + "/chat", hostNotice);
-        }
-
-        ChatMessageDto leaveNotice = ChatMessageDto.builder()
-                .type(ChatMessageDto.MessageType.NOTICE)
-                .roomId(roomId)
-                .sender("System")
-                .message(user.getNickname() + "님이 퇴장하셨습니다.")
-                .build();
-        messagingTemplate.convertAndSend("/sub/rooms/" + roomId + "/chat", leaveNotice);
-
+        // 1. 먼저 퇴장 처리
         if (playing) {
-            // 게임 중에는 participant를 삭제하지 않고 isLeft=true로만 처리
+            // 게임 중에는 RoundParticipant, RoundSubmission FK가 Participant를 참조할 수 있으므로 삭제하지 않는다.
             room.markParticipantLeft(participant);
         } else {
-            // 게임 시작 전 대기방에서는 기존처럼 participant 삭제 가능
+            // 대기 중에는 라운드 관련 FK가 없으므로 Participant 삭제 가능
             room.removeParticipant(participant);
             participantRepository.delete(participant);
         }
 
-        List<Participant> activeParticipants = getActiveParticipants(room);
+        // 2. 퇴장 후 남아 있는 활성 참가자 계산
+        List<Participant> activeParticipants =
+                participantRepository.findActiveParticipantsByRoomId(roomId);
 
-        boolean onlyAiOrEmpty = activeParticipants.isEmpty()
-                || activeParticipants.stream().allMatch(p -> p.getUserId().isAi());
+        // 3. 남은 인간 유저 수 계산
+        long activeHumanCount =
+                participantRepository.countActiveHumanByRoomId(roomId);
 
-        if (onlyAiOrEmpty) {
-            roundSubmissionRepository.deleteByRoomId(roomId);
-            roundParticipantRepository.deleteByRoomId(roomId);
-            roundRepository.deleteByRoomId(roomId);
-
-            roomRepository.delete(room);
+        // 4. 인간 유저가 0명이면 방 완전 삭제
+        if (activeHumanCount == 0) {
+            sendLeaveNotice(roomId, user.getNickname());
+            deleteRoomWithGameData(room);
             broadcastLobbyUpdate();
             return null;
         }
 
-        if (playing && onlyAiOrEmpty) {
-            deleteRoomWithGameData(room);
-            return null;
+        // 5. 인간 유저가 남아 있으면 방장 보정
+        HostChangeResult hostChangeResult = ensureHost(room, activeParticipants);
+
+        // 6. 채팅 알림 전송
+        if (hostChangeResult.changed()) {
+            sendHostChangedNotice(roomId, hostChangeResult.newHostNickname());
         }
 
+        sendLeaveNotice(roomId, user.getNickname());
+
+        // 7. 로비 갱신
         broadcastLobbyUpdate();
 
+        // 8. 남은 참가자들에게 방 상태 변경 이벤트 반환
         return RoomUpdateResponse.builder()
                 .roomId(roomId)
                 .type("USER_LEAVE")
                 .leaverId(leaverId)
-                .newHostId(newHostId != null ? newHostId : room.getHostId())
+                .newHostId(room.getHostId())
                 .participants(activeParticipants.stream()
                         .map(p -> p.getUserId().getNickname())
                         .toList())
@@ -376,9 +375,15 @@ public class RoomService {
     // 게임 중 방 삭제: round_participant FK 순서대로 제거 후 room cascade 삭제
     private void deleteRoomWithGameData(Room room) {
         Long roomId = room.getId();
+
+        // FK 순서 때문에 제출 -> 라운드 참가자 -> 라운드 순서로 삭제
         roundSubmissionRepository.deleteByRoomId(roomId);
         roundParticipantRepository.deleteByRoomId(roomId);
         roundRepository.deleteByRoomId(roomId);
+
+        // Redis 실시간 랭킹 캐시도 방 삭제 시 함께 제거
+        rankingService.clearRanking(roomId);
+
         roomRepository.delete(room);
     }
 
@@ -478,6 +483,49 @@ public class RoomService {
                         .build())
                 .sorted((a, b) -> b.roundWinCount() - a.roundWinCount())
                 .toList();
+    }
+
+    private HostChangeResult ensureHost(Room room, List<Participant> activeParticipants) {
+        boolean hasActiveHost = activeParticipants.stream()
+                .anyMatch(p -> p.isHost() && !p.getUserId().isAi());
+
+        if (hasActiveHost) {
+            return new HostChangeResult(false, room.getHostId(), null);
+        }
+
+        Participant nextHost = activeParticipants.stream()
+                .filter(p -> !p.getUserId().isAi())
+                .findFirst()
+                .orElseThrow(() -> new ServiceException("500-2", "방장을 위임할 인간 참가자가 없습니다."));
+
+        nextHost.makeHost();
+        room.changeHost(nextHost.getUserId().getId());
+
+        return new HostChangeResult(true, nextHost.getUserId().getId(), nextHost.getUserId().getNickname());
+    }
+
+    private record HostChangeResult(boolean changed, Long newHostId, String newHostNickname) {}
+
+    private void sendLeaveNotice(Long roomId, String nickname) {
+        ChatMessageDto leaveNotice = ChatMessageDto.builder()
+                .type(ChatMessageDto.MessageType.NOTICE)
+                .roomId(roomId)
+                .sender("System")
+                .message(nickname + "님이 퇴장하셨습니다.")
+                .build();
+
+        messagingTemplate.convertAndSend("/sub/rooms/" + roomId + "/chat", leaveNotice);
+    }
+
+    private void sendHostChangedNotice(Long roomId, String nextHostNickname) {
+        ChatMessageDto hostNotice = ChatMessageDto.builder()
+                .type(ChatMessageDto.MessageType.NOTICE)
+                .roomId(roomId)
+                .sender("System")
+                .message("방장이 " + nextHostNickname + "님으로 변경되었습니다.")
+                .build();
+
+        messagingTemplate.convertAndSend("/sub/rooms/" + roomId + "/chat", hostNotice);
     }
 
     /*
