@@ -62,7 +62,7 @@ public class RoundService {
     private final ObjectProvider<AiSubmissionService> aiSubmissionServiceProvider;
     private final ObjectProvider<AiChatService> aiChatServiceProvider;
     private final TaskScheduler taskScheduler;
-    private static final int ROUND_TIME_LIMIT = 20;
+    private static final int ROUND_TIME_LIMIT = 60;
     private final RoomService roomService;
     private final RankingService rankingService;
 
