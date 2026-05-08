@@ -8,16 +8,15 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import software.amazon.awssdk.core.sync.RequestBody;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-
 import backend.drawrace.global.config.StorageProperties;
 import backend.drawrace.global.exception.ServiceException;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 @Slf4j
 @Service
@@ -72,10 +71,8 @@ public class S3FileStorageService implements FileStorageService {
         String bucket = storageProperties.s3().bucket();
 
         try {
-            DeleteObjectRequest deleteRequest = DeleteObjectRequest.builder()
-                    .bucket(bucket)
-                    .key(filename)
-                    .build();
+            DeleteObjectRequest deleteRequest =
+                    DeleteObjectRequest.builder().bucket(bucket).key(filename).build();
             s3Client.deleteObject(deleteRequest);
         } catch (Exception e) {
             log.warn("S3 파일 삭제 실패: {}", filename, e);
