@@ -54,6 +54,7 @@ class ChatModerationServiceTest {
         Long userId = 1L;
         String input = "안녕하세요";
 
+        doReturn(input).when(chatModerationService).getAiDecision(input);
         chatModerationService.filterMessage(userId, input);
 
         assertThatThrownBy(() -> chatModerationService.filterMessage(userId, input))
