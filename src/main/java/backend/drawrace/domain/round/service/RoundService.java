@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import backend.drawrace.domain.chat.dto.ChatMessageDto;
 import backend.drawrace.domain.chat.service.AiChatService;
 import backend.drawrace.domain.room.dto.response.GameEvent;
+import backend.drawrace.domain.room.dto.response.RankingRes;
 import backend.drawrace.domain.room.entity.Participant;
 import backend.drawrace.domain.room.entity.Room;
 import backend.drawrace.domain.room.repository.ParticipantRepository;
@@ -287,6 +288,9 @@ public class RoundService {
         rankingService.updateScore(
                 round.getRoom().getId(), roundWinner.getUserId().getId(), 1.0 // 1점씩 증가
                 );
+
+        // 실시간 랭킹 브로드캐스트 호출
+        broadcastCurrentRanking(round.getRoom().getId());
 
         round.finish();
 
@@ -593,5 +597,13 @@ public class RoundService {
                 .message("🎉 축하합니다! 최종 우승자는 " + nickname + "님입니다! 🎉")
                 .build();
         messagingTemplate.convertAndSend("/sub/rooms/" + roomId + "/chat", finalWinnerNotice);
+    }
+
+    // Redis에서 현재 랭킹을 조회해 웹소켓으로 전송
+    private void broadcastCurrentRanking(Long roomId) {
+        List<RankingRes> currentRanking = roomService.getFinalRanking(roomId);
+
+        // 모든 유저에게 실시간 랭킹 리스트 전송
+        messagingTemplate.convertAndSend("/sub/rooms/" + roomId + "/ranking", currentRanking);
     }
 }

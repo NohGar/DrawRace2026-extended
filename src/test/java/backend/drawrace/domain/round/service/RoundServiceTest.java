@@ -1031,6 +1031,48 @@ class RoundServiceTest {
         assertThat(responses.get(2).isWinner()).isFalse();
     }
 
+    @Test
+    @DisplayName("라운드 종료 시 Redis 점수 업데이트 후 실시간 랭킹을 전송해야 한다")
+    void submitDrawing_broadcastRankingAfterUpdate() throws Exception {
+        Long roomId = 1L;
+        Long roundId = 10L;
+        Long nextRoundId = 11L;
+        Long participantId = 100L;
+
+        Room room = createRoom(roomId, true, 1L);
+        setField(room, "totalRounds", (short) 3); // 총 3라운드 게임 설정
+        Round round = createInProgressRound(roundId, room, 1, "사과");
+        Participant participant = createParticipant(participantId, room, 0);
+
+        SubmitDrawingRequest request = createSubmitDrawingRequest(participantId, "dummy-image");
+        RoundSubmission submission = RoundSubmission.create(round, participant, "dummy-image", "사과", 0.95);
+
+        given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
+        given(participantRepository.findByIdAndRoomId(participantId, roomId)).willReturn(Optional.of(participant));
+        given(roundParticipantRepository.existsByRoundIdAndParticipantId(roundId, participantId))
+                .willReturn(true);
+        given(aiInferenceService.infer("dummy-image", "사과")).willReturn(new AiInferenceResponse("사과", 0.95));
+
+        given(roundSubmissionRepository.countActiveByRoundId(roundId)).willReturn(1L);
+        given(roundParticipantRepository.countActiveByRoundId(roundId)).willReturn(1L);
+        given(roundSubmissionRepository.findByRoundId(roundId)).willReturn(List.of(submission));
+        given(keywordGenerator.generateKeyword()).willReturn("자동차");
+        given(participantRepository.findByRoomIdAndIsLeftFalse(roomId)).willReturn(List.of(participant));
+
+        Round nextRound = Round.create(room, 2, "자동차");
+        setField(nextRound, "id", nextRoundId);
+        given(roundRepository.save(any(Round.class))).willReturn(nextRound);
+
+        roundService.submitDrawing(roundId, 1L, request);
+
+        Long winnerUserId = participant.getUserId().getId();
+        String destination = "/sub/rooms/" + roomId + "/ranking";
+
+        then(rankingService).should().updateScore(eq(roomId), eq(winnerUserId), eq(1.0));
+
+        then(messagingTemplate).should().convertAndSend(eq(destination), any(List.class));
+    }
+
     private Participant createAiParticipant(Long participantId, Room room, Long aiUserId) throws Exception {
         User user = mock(User.class);
         lenient().when(user.getId()).thenReturn(aiUserId);
