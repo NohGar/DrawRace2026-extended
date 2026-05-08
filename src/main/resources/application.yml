@@ -42,6 +42,16 @@ ai:
     api-key: ${AI_GATEWAY_API_KEY:}
     model: ${AI_MODEL:}
 
+spring:
+  cloud:
+    aws:
+      region:
+        static: ${AWS_REGION:ap-northeast-2}
+        auto: false
+      credentials:
+        access-key: ${AWS_ACCESS_KEY_ID:test}
+        secret-key: ${AWS_SECRET_ACCESS_KEY:test}
+
 storage:
   mode: local
   local:
