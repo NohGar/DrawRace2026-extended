@@ -9,6 +9,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+import backend.drawrace.domain.room.service.RankingService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -90,6 +91,9 @@ class RoundServiceTest {
 
     @Mock
     private RoomService roomService;
+
+    @Mock
+    private RankingService rankingService;
 
     @InjectMocks
     private RoundService roundService;
@@ -288,6 +292,42 @@ class RoundServiceTest {
                 .should()
                 .saveAll(argThat((Iterable<RoundParticipant> iterable) -> countIterable(iterable) == 2));
     }
+
+    @Test
+    @DisplayName("라운드 종료 시 승자의 점수가 Redis에 1점 추가되어야 한다")
+    void submitDrawing_updateRedisRankingOnRoundWinner() throws Exception {
+        Long roomId = 1L;
+        Long roundId = 10L;
+        Long nextRoundId = 11L;
+        Long participantId = 100L;
+
+        Room room = createRoom(roomId, true, 1L);
+        setField(room, "totalRounds", (short) 3);
+        Round round = createInProgressRound(roundId, room, 1, "사과");
+        Participant participant = createParticipant(participantId, room, 0);
+
+        SubmitDrawingRequest request = createSubmitDrawingRequest(participantId, "dummy-image");
+        RoundSubmission submission = RoundSubmission.create(round, participant, "dummy-image", "사과", 0.95);
+
+        given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
+        given(participantRepository.findByIdAndRoomId(participantId, roomId)).willReturn(Optional.of(participant));
+        given(roundParticipantRepository.existsByRoundIdAndParticipantId(roundId, participantId)).willReturn(true);
+        given(aiInferenceService.infer("dummy-image", "사과")).willReturn(new AiInferenceResponse("사과", 0.95));
+
+        given(roundSubmissionRepository.countActiveByRoundId(roundId)).willReturn(1L);
+        given(roundParticipantRepository.countActiveByRoundId(roundId)).willReturn(1L);
+        given(roundSubmissionRepository.findByRoundId(roundId)).willReturn(List.of(submission));
+        given(keywordGenerator.generateKeyword()).willReturn("자동차");
+        given(participantRepository.findByRoomIdAndIsLeftFalse(roomId)).willReturn(List.of(participant));
+
+        Round nextRound = Round.create(room, 2, "자동차");
+        setField(nextRound, "id", nextRoundId);
+        given(roundRepository.save(any(Round.class))).willReturn(nextRound);
+
+        roundService.submitDrawing(roundId, 1L, request);
+
+        Long winnerUserId = participant.getUserId().getId();
+        then(rankingService).should().updateScore(eq(roomId), eq(winnerUserId), eq(1.0));    }
 
     @Test
     @DisplayName("라운드 종료 시 현재 제출자 점수와 라운드 승자 점수를 따로 반환한다")
