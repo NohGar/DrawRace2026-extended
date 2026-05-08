@@ -107,8 +107,7 @@ public class RoomService {
     }
 
     public RoomInfoRes getRoomDetail(Long roomId) {
-        Room room = roomRepository.findById(roomId)
-                .orElseThrow(() -> new ServiceException("404-2", "방을 찾을 수 없습니다."));
+        Room room = roomRepository.findById(roomId).orElseThrow(() -> new ServiceException("404-2", "방을 찾을 수 없습니다."));
 
         List<RoomInfoRes.ParticipantDto> participantDtos = room.getParticipants().stream()
                 .filter(p -> !p.isLeft())
@@ -252,8 +251,7 @@ public class RoomService {
 
     @Transactional
     public RoomUpdateResponse leaveRoom(Long roomId, Long userId) {
-        Optional<Participant> participantOpt =
-                participantRepository.findByRoomIdAndUserId_Id(roomId, userId);
+        Optional<Participant> participantOpt = participantRepository.findByRoomIdAndUserId_Id(roomId, userId);
 
         if (participantOpt.isEmpty()) {
             cleanupOrRepairRoom(roomId);
@@ -285,8 +283,7 @@ public class RoomService {
     }
 
     private boolean cleanupOrRepairRoom(Long roomId) {
-        Room room = roomRepository.findById(roomId)
-                .orElse(null);
+        Room room = roomRepository.findById(roomId).orElse(null);
 
         if (room == null) {
             return true;
@@ -299,8 +296,7 @@ public class RoomService {
             return true;
         }
 
-        List<Participant> activeParticipants =
-                participantRepository.findActiveParticipantsByRoomId(roomId);
+        List<Participant> activeParticipants = participantRepository.findActiveParticipantsByRoomId(roomId);
 
         ensureHost(room, activeParticipants);
 
@@ -327,12 +323,10 @@ public class RoomService {
         }
 
         // 2. 퇴장 후 남아 있는 활성 참가자 계산
-        List<Participant> activeParticipants =
-                participantRepository.findActiveParticipantsByRoomId(roomId);
+        List<Participant> activeParticipants = participantRepository.findActiveParticipantsByRoomId(roomId);
 
         // 3. 남은 인간 유저 수 계산
-        long activeHumanCount =
-                participantRepository.countActiveHumanByRoomId(roomId);
+        long activeHumanCount = participantRepository.countActiveHumanByRoomId(roomId);
 
         // 4. 인간 유저가 0명이면 방 완전 삭제
         if (activeHumanCount == 0) {
@@ -501,7 +495,8 @@ public class RoomService {
         nextHost.makeHost();
         room.changeHost(nextHost.getUserId().getId());
 
-        return new HostChangeResult(true, nextHost.getUserId().getId(), nextHost.getUserId().getNickname());
+        return new HostChangeResult(
+                true, nextHost.getUserId().getId(), nextHost.getUserId().getNickname());
     }
 
     private record HostChangeResult(boolean changed, Long newHostId, String newHostNickname) {}

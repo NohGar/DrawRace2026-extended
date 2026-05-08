@@ -21,6 +21,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 import backend.drawrace.domain.chat.dto.ChatMessageDto;
+import backend.drawrace.domain.chat.service.AiChatService;
 import backend.drawrace.domain.room.dto.request.CreateRoomReq;
 import backend.drawrace.domain.room.dto.response.GetRoomListRes;
 import backend.drawrace.domain.room.dto.response.RankingRes;
@@ -65,6 +66,9 @@ class RoomServiceTest {
     @Mock
     private RoundRepository roundRepository;
 
+    @Mock
+    private org.springframework.beans.factory.ObjectProvider<AiChatService> aiChatServiceProvider;
+
     @InjectMocks
     private RoomService roomService;
 
@@ -73,6 +77,7 @@ class RoomServiceTest {
     void createRoom_success() throws Exception {
         Long userId = 1L;
         CreateRoomReq req = new CreateRoomReq("테스트 방", (short) 4, (short) 3, "1234");
+
         User user = User.builder()
                 .email("test@test.com")
                 .nickname("유저A")
@@ -80,11 +85,13 @@ class RoomServiceTest {
                 .build();
 
         given(userRepository.findById(userId)).willReturn(Optional.of(user));
+
         given(roomRepository.save(any(Room.class))).willAnswer(inv -> {
             Room room = inv.getArgument(0);
             setField(room, "id", 100L);
             return room;
         });
+
         given(roomRepository.findById(100L)).willReturn(Optional.of(createRoom(100L, "테스트 방", userId)));
 
         RoomInfoRes res = roomService.createRoom(req, userId);
@@ -92,13 +99,15 @@ class RoomServiceTest {
         assertThat(res.title()).isEqualTo("테스트 방");
         assertThat(res.maxPlayers()).isEqualTo((short) 4);
         assertThat(res.hostId()).isEqualTo(userId);
+
         verify(participantRepository).save(any(Participant.class));
     }
 
     @Test
     @DisplayName("방 입장 실패 - 비밀번호가 틀리면 예외가 발생한다")
-    void joinRoom_fail_password() throws Exception {
+    void joinRoom_fail_password() {
         Long roomId = 100L;
+
         Room room = Room.builder()
                 .title("비번방")
                 .password("1234")
@@ -121,22 +130,19 @@ class RoomServiceTest {
         Room room = createRoom(roomId, "테스트방", 2L);
         User user = createUser(userId, "채은");
 
-        // 첫 번째, 두 번째 시도는 충돌 발생, 세 번째에 성공하도록 설정
-        when(roomRepository.findById(roomId)).thenReturn(Optional.of(room));
-        when(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, userId))
-                .thenReturn(false);
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, userId))
+                .willReturn(false);
+        given(userRepository.findById(userId)).willReturn(Optional.of(user));
 
-        // save할 때 낙관적 락 예외를 두 번 던지게 함
-        doThrow(ObjectOptimisticLockingFailureException.class) // 1회차 실패
-                .doThrow(ObjectOptimisticLockingFailureException.class) // 2회차 실패
-                .doAnswer(invocation -> invocation.getArgument(0)) // 3회차 성공
+        doThrow(ObjectOptimisticLockingFailureException.class)
+                .doThrow(ObjectOptimisticLockingFailureException.class)
+                .doAnswer(invocation -> invocation.getArgument(0))
                 .when(participantRepository)
                 .save(any());
 
         roomService.joinRoom(roomId, userId, null);
 
-        // findById가 총 3번(최초 + 재시도 2번) 호출되었는지 확인
         verify(roomRepository, times(3)).findById(roomId);
         verify(participantRepository, times(3)).save(any());
     }
@@ -165,8 +171,9 @@ class RoomServiceTest {
         room.getParticipants().add(participant);
         room.getParticipants().add(otherParticipant);
 
-        given(participantRepository.findByRoomIdAndUserId_IdAndIsLeftFalse(roomId, userId))
-                .willReturn(Optional.of(participant));
+        given(participantRepository.findByRoomIdAndUserId_Id(roomId, userId)).willReturn(Optional.of(participant));
+        given(participantRepository.findActiveParticipantsByRoomId(roomId)).willReturn(List.of(otherParticipant));
+        given(participantRepository.countActiveHumanByRoomId(roomId)).willReturn(1L);
 
         RoomUpdateResponse response = roomService.leaveRoom(roomId, userId);
 
@@ -178,7 +185,7 @@ class RoomServiceTest {
         assertThat(response.getParticipants()).containsExactly("유저B");
         assertThat(response.getMessage()).contains("유저A님이 퇴장하셨습니다.");
 
-        verify(participantRepository, times(1)).delete(participant);
+        verify(participantRepository).delete(participant);
         verify(roomRepository, never()).delete(room);
 
         assertThat(room.getParticipants()).doesNotContain(participant);
@@ -201,16 +208,18 @@ class RoomServiceTest {
 
         Participant participant =
                 Participant.builder().userId(user).room(room).isHost(false).build();
+        setField(participant, "id", 100L);
+
         Participant hostParticipant =
                 Participant.builder().userId(hostUser).room(room).isHost(true).build();
-        setField(participant, "id", 100L);
         setField(hostParticipant, "id", 101L);
 
         room.getParticipants().add(participant);
         room.getParticipants().add(hostParticipant);
 
-        given(participantRepository.findByRoomIdAndUserId_IdAndIsLeftFalse(roomId, userId))
-                .willReturn(Optional.of(participant));
+        given(participantRepository.findByRoomIdAndUserId_Id(roomId, userId)).willReturn(Optional.of(participant));
+        given(participantRepository.findActiveParticipantsByRoomId(roomId)).willReturn(List.of(hostParticipant));
+        given(participantRepository.countActiveHumanByRoomId(roomId)).willReturn(1L);
 
         RoomUpdateResponse response = roomService.leaveRoom(roomId, userId);
 
@@ -232,6 +241,7 @@ class RoomServiceTest {
     void finishGame_success() throws Exception {
         Long roomId = 100L;
         Long winnerId = 1L;
+
         Room room = createRoom(roomId, "게임방", winnerId);
         setField(room, "isPlaying", true);
 
@@ -247,7 +257,6 @@ class RoomServiceTest {
 
         ZSetOperations.TypedTuple<String> tuple = mock(ZSetOperations.TypedTuple.class);
         given(rankingService.getRankingList(roomId)).willReturn(Set.of(tuple));
-
         given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
         given(participantRepository.findByRoomId(roomId)).willReturn(List.of(participant));
 
@@ -257,13 +266,13 @@ class RoomServiceTest {
         assertThat(participant.isWinner()).isTrue();
         assertThat(stats.getTotalGameCount()).isEqualTo(1);
         assertThat(stats.getWinGameCount()).isEqualTo(1);
+
         verify(rankingService).clearRanking(roomId);
     }
 
     @Test
     @DisplayName("방 퇴장 성공 - 방장이 나가면 다음 사람에게 위임된다")
     void leaveRoom_hostDelegation() throws Exception {
-        // given
         Long roomId = 100L;
         Long hostId = 1L;
         Long nextHostId = 2L;
@@ -276,30 +285,32 @@ class RoomServiceTest {
 
         Participant hostPart =
                 Participant.builder().userId(hostUser).room(room).isHost(true).build();
+        setField(hostPart, "id", 100L);
+
         Participant nextPart =
                 Participant.builder().userId(nextUser).room(room).isHost(false).build();
-
-        setField(hostPart, "id", 100L);
         setField(nextPart, "id", 101L);
 
-        // 방에 두 명 참여 중
         room.getParticipants().add(hostPart);
         room.getParticipants().add(nextPart);
 
-        given(participantRepository.findByRoomIdAndUserId_IdAndIsLeftFalse(roomId, hostId))
-                .willReturn(Optional.of(hostPart));
+        given(participantRepository.findByRoomIdAndUserId_Id(roomId, hostId)).willReturn(Optional.of(hostPart));
+        given(participantRepository.findActiveParticipantsByRoomId(roomId)).willReturn(List.of(nextPart));
+        given(participantRepository.countActiveHumanByRoomId(roomId)).willReturn(1L);
 
-        roomService.leaveRoom(roomId, hostId);
+        RoomUpdateResponse response = roomService.leaveRoom(roomId, hostId);
 
+        assertThat(response).isNotNull();
         assertThat(room.getHostId()).isEqualTo(nextHostId);
         assertThat(nextPart.isHost()).isTrue();
+
         verify(participantRepository).delete(hostPart);
+        verify(roomRepository, never()).delete(room);
     }
 
     @Test
     @DisplayName("게임 중 방장이 퇴장하면 다음 사람에게 위임하고 방장은 퇴장 상태로 변경한다")
     void leaveRoom_hostDelegation_DuringGame() throws Exception {
-        // given
         Long roomId = 100L;
         Long hostId = 1L;
         Long nextHostId = 2L;
@@ -313,18 +324,18 @@ class RoomServiceTest {
 
         Participant hostPart =
                 Participant.builder().userId(hostUser).room(room).isHost(true).build();
+        setField(hostPart, "id", 100L);
+
         Participant nextPart =
                 Participant.builder().userId(nextUser).room(room).isHost(false).build();
-
-        setField(hostPart, "id", 100L);
         setField(nextPart, "id", 101L);
 
-        // 방에 두 명 참여 중
         room.getParticipants().add(hostPart);
         room.getParticipants().add(nextPart);
 
-        given(participantRepository.findByRoomIdAndUserId_IdAndIsLeftFalse(roomId, hostId))
-                .willReturn(Optional.of(hostPart));
+        given(participantRepository.findByRoomIdAndUserId_Id(roomId, hostId)).willReturn(Optional.of(hostPart));
+        given(participantRepository.findActiveParticipantsByRoomId(roomId)).willReturn(List.of(nextPart));
+        given(participantRepository.countActiveHumanByRoomId(roomId)).willReturn(1L);
 
         RoomUpdateResponse response = roomService.leaveRoom(roomId, hostId);
 
@@ -335,13 +346,14 @@ class RoomServiceTest {
         assertThat(hostPart.isLeft()).isTrue();
         assertThat(hostPart.isHost()).isFalse();
         assertThat(room.getParticipants()).contains(hostPart);
+
         verify(participantRepository, never()).delete(any(Participant.class));
+        verify(roomRepository, never()).delete(any(Room.class));
     }
 
     @Test
     @DisplayName("유저 퇴장 시 퇴장 알림과 방장 위임 알림이 채팅창에 전달된다")
     void leaveRoom_ShouldSendSystemNotice() throws Exception {
-        // 1. Given: 테스트에 필요한 가짜 객체(Mock) 설정
         Long userId = 1L;
         Long roomId = 10L;
         Long nextHostId = 2L;
@@ -354,17 +366,18 @@ class RoomServiceTest {
 
         Participant participant =
                 Participant.builder().userId(user).room(room).isHost(true).build();
+        setField(participant, "id", 100L);
+
         Participant nextHost =
                 Participant.builder().userId(nextUser).room(room).isHost(false).build();
-
-        setField(participant, "id", 100L);
         setField(nextHost, "id", 101L);
 
         room.getParticipants().add(participant);
         room.getParticipants().add(nextHost);
 
-        given(participantRepository.findByRoomIdAndUserId_IdAndIsLeftFalse(roomId, userId))
-                .willReturn(Optional.of(participant));
+        given(participantRepository.findByRoomIdAndUserId_Id(roomId, userId)).willReturn(Optional.of(participant));
+        given(participantRepository.findActiveParticipantsByRoomId(roomId)).willReturn(List.of(nextHost));
+        given(participantRepository.countActiveHumanByRoomId(roomId)).willReturn(1L);
 
         roomService.leaveRoom(roomId, userId);
 
@@ -407,6 +420,8 @@ class RoomServiceTest {
 
         given(participantRepository.findFirstByUserId_IdAndIsLeftFalseOrderByIdDesc(userId))
                 .willReturn(Optional.of(participant));
+        given(participantRepository.findActiveParticipantsByRoomId(roomId)).willReturn(List.of(otherParticipant));
+        given(participantRepository.countActiveHumanByRoomId(roomId)).willReturn(1L);
 
         RoomUpdateResponse response = roomService.leaveCurrentRoom(userId);
 
@@ -418,7 +433,7 @@ class RoomServiceTest {
         assertThat(response.getParticipants()).containsExactly("유저B");
         assertThat(response.getMessage()).contains("유저A님이 퇴장하셨습니다.");
 
-        verify(participantRepository, times(1)).delete(participant);
+        verify(participantRepository).delete(participant);
         verify(roomRepository, never()).delete(room);
 
         assertThat(room.getParticipants()).doesNotContain(participant);
@@ -442,30 +457,33 @@ class RoomServiceTest {
     @DisplayName("게임 중 호스트 퇴장 후 마지막 유저가 퇴장하면 방이 삭제된다")
     void leaveRoom_lastUserLeaveDuringGame_roomDeleted() throws Exception {
         Long roomId = 10L;
-        Long hostId = 1L;
         Long lastUserId = 2L;
 
-        // 호스트가 이미 퇴장해서 lastUser가 새 호스트인 상황
         Room room = createRoom(roomId, "게임방", lastUserId);
         setField(room, "isPlaying", true);
         setField(room, "curPlayers", (short) 1);
 
         User lastUser = createUser(lastUserId, "마지막유저");
+
         Participant lastParticipant =
                 Participant.builder().userId(lastUser).room(room).isHost(true).build();
         setField(lastParticipant, "id", 200L);
 
         room.getParticipants().add(lastParticipant);
 
-        given(participantRepository.findByRoomIdAndUserId_IdAndIsLeftFalse(roomId, lastUserId))
+        given(participantRepository.findByRoomIdAndUserId_Id(roomId, lastUserId))
                 .willReturn(Optional.of(lastParticipant));
+        given(participantRepository.findActiveParticipantsByRoomId(roomId)).willReturn(List.of());
+        given(participantRepository.countActiveHumanByRoomId(roomId)).willReturn(0L);
 
         RoomUpdateResponse response = roomService.leaveRoom(roomId, lastUserId);
 
         assertThat(response).isNull();
+
         verify(roundSubmissionRepository).deleteByRoomId(roomId);
         verify(roundParticipantRepository).deleteByRoomId(roomId);
         verify(roundRepository).deleteByRoomId(roomId);
+        verify(rankingService).clearRanking(roomId);
         verify(roomRepository).delete(room);
     }
 
@@ -478,19 +496,26 @@ class RoomServiceTest {
         Room room = createRoom(roomId, "대기방", hostId);
 
         User hostUser = createUser(hostId, "방장");
+
         Participant hostParticipant =
                 Participant.builder().userId(hostUser).room(room).isHost(true).build();
         setField(hostParticipant, "id", 100L);
 
         room.getParticipants().add(hostParticipant);
 
-        given(participantRepository.findByRoomIdAndUserId_IdAndIsLeftFalse(roomId, hostId))
-                .willReturn(Optional.of(hostParticipant));
+        given(participantRepository.findByRoomIdAndUserId_Id(roomId, hostId)).willReturn(Optional.of(hostParticipant));
+        given(participantRepository.findActiveParticipantsByRoomId(roomId)).willReturn(List.of());
+        given(participantRepository.countActiveHumanByRoomId(roomId)).willReturn(0L);
 
         RoomUpdateResponse response = roomService.leaveRoom(roomId, hostId);
 
         assertThat(response).isNull();
+
         verify(participantRepository).delete(hostParticipant);
+        verify(roundSubmissionRepository).deleteByRoomId(roomId);
+        verify(roundParticipantRepository).deleteByRoomId(roomId);
+        verify(roundRepository).deleteByRoomId(roomId);
+        verify(rankingService).clearRanking(roomId);
         verify(roomRepository).delete(room);
     }
 
@@ -510,23 +535,84 @@ class RoomServiceTest {
 
         Participant hostParticipant =
                 Participant.builder().userId(hostUser).room(room).isHost(true).build();
+        setField(hostParticipant, "id", 100L);
+
         Participant aiParticipant =
                 Participant.builder().userId(aiUser).room(room).isHost(false).build();
-        setField(hostParticipant, "id", 100L);
         setField(aiParticipant, "id", 101L);
 
         room.getParticipants().add(hostParticipant);
         room.getParticipants().add(aiParticipant);
 
-        given(participantRepository.findByRoomIdAndUserId_IdAndIsLeftFalse(roomId, hostId))
-                .willReturn(Optional.of(hostParticipant));
+        given(participantRepository.findByRoomIdAndUserId_Id(roomId, hostId)).willReturn(Optional.of(hostParticipant));
+        given(participantRepository.findActiveParticipantsByRoomId(roomId)).willReturn(List.of(aiParticipant));
+        given(participantRepository.countActiveHumanByRoomId(roomId)).willReturn(0L);
 
         RoomUpdateResponse response = roomService.leaveRoom(roomId, hostId);
 
         assertThat(response).isNull();
+
         verify(roundSubmissionRepository).deleteByRoomId(roomId);
         verify(roundParticipantRepository).deleteByRoomId(roomId);
         verify(roundRepository).deleteByRoomId(roomId);
+        verify(rankingService).clearRanking(roomId);
+        verify(roomRepository).delete(room);
+    }
+
+    @Test
+    @DisplayName("이미 퇴장 처리된 참가자가 다시 leaveRoom을 호출해도 인간 유저가 없으면 방이 삭제된다")
+    void leaveRoom_alreadyLeftParticipant_cleanupRoomIfNoActiveHuman() throws Exception {
+        Long roomId = 10L;
+        Long userId = 1L;
+
+        Room room = createRoom(roomId, "게임방", userId);
+        setField(room, "isPlaying", true);
+
+        User user = createUser(userId, "방장");
+
+        Participant participant =
+                Participant.builder().userId(user).room(room).isHost(true).build();
+        setField(participant, "id", 100L);
+        participant.leave();
+
+        room.getParticipants().add(participant);
+
+        given(participantRepository.findByRoomIdAndUserId_Id(roomId, userId)).willReturn(Optional.of(participant));
+        given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(participantRepository.countActiveHumanByRoomId(roomId)).willReturn(0L);
+
+        RoomUpdateResponse response = roomService.leaveRoom(roomId, userId);
+
+        assertThat(response).isNull();
+
+        verify(roundSubmissionRepository).deleteByRoomId(roomId);
+        verify(roundParticipantRepository).deleteByRoomId(roomId);
+        verify(roundRepository).deleteByRoomId(roomId);
+        verify(rankingService).clearRanking(roomId);
+        verify(roomRepository).delete(room);
+    }
+
+    @Test
+    @DisplayName("참가자 정보가 없어도 방에 인간 유저가 없으면 cleanup을 통해 방이 삭제된다")
+    void leaveRoom_participantNotFound_cleanupRoomIfNoActiveHuman() throws Exception {
+        Long roomId = 10L;
+        Long userId = 1L;
+
+        Room room = createRoom(roomId, "유령방", userId);
+        setField(room, "isPlaying", true);
+
+        given(participantRepository.findByRoomIdAndUserId_Id(roomId, userId)).willReturn(Optional.empty());
+        given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(participantRepository.countActiveHumanByRoomId(roomId)).willReturn(0L);
+
+        RoomUpdateResponse response = roomService.leaveRoom(roomId, userId);
+
+        assertThat(response).isNull();
+
+        verify(roundSubmissionRepository).deleteByRoomId(roomId);
+        verify(roundParticipantRepository).deleteByRoomId(roomId);
+        verify(roundRepository).deleteByRoomId(roomId);
+        verify(rankingService).clearRanking(roomId);
         verify(roomRepository).delete(room);
     }
 
@@ -537,16 +623,17 @@ class RoomServiceTest {
         Long hostId = 1L;
 
         Room room = createRoom(roomId, "테스트방", hostId);
-        setField(room, "curPlayers", (short) 2); // 필드값은 2지만 실제 활성 인원은 1
+        setField(room, "curPlayers", (short) 2);
 
         User hostUser = createUser(hostId, "방장");
         User leftUser = createUser(2L, "퇴장유저");
 
         Participant hostParticipant =
                 Participant.builder().userId(hostUser).room(room).isHost(true).build();
+
         Participant leftParticipant =
                 Participant.builder().userId(leftUser).room(room).isHost(false).build();
-        leftParticipant.leave(); // isLeft=true
+        leftParticipant.leave();
 
         room.getParticipants().add(hostParticipant);
         room.getParticipants().add(leftParticipant);
@@ -556,7 +643,7 @@ class RoomServiceTest {
         List<GetRoomListRes> result = roomService.getRoomList();
 
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).curPlayers()).isEqualTo((short) 1); // 활성 인원 기준
+        assertThat(result.get(0).curPlayers()).isEqualTo((short) 1);
     }
 
     @Test
@@ -565,10 +652,13 @@ class RoomServiceTest {
         Long roomId = 1L;
 
         Room ghostRoom = createRoom(roomId, "유령방", 1L);
+
         User user = createUser(1L, "유저A");
+
         Participant leftParticipant =
                 Participant.builder().userId(user).room(ghostRoom).isHost(false).build();
         leftParticipant.leave();
+
         ghostRoom.getParticipants().add(leftParticipant);
 
         given(roomRepository.findAll()).willReturn(List.of(ghostRoom));
@@ -581,52 +671,48 @@ class RoomServiceTest {
     @Test
     @DisplayName("최종 랭킹 조회 시 Redis에 데이터가 있으면 DB 전체 조회를 생략하고 Redis 데이터를 반환한다")
     void getFinalRanking_PriorityRedis() throws Exception {
-        // given
         Long roomId = 100L;
         Long userId = 1L;
 
-        // Redis 결과 모킹 (TypedTuple)
         ZSetOperations.TypedTuple<String> tuple = mock(ZSetOperations.TypedTuple.class);
         given(tuple.getValue()).willReturn(String.valueOf(userId));
         given(tuple.getScore()).willReturn(3.0);
         given(rankingService.getRankingList(roomId)).willReturn(Set.of(tuple));
 
-        // DB 개별 조회 모킹
         User user = createUser(userId, "우승자");
         Participant participant = Participant.builder().userId(user).build();
+
         given(participantRepository.findByRoomIdAndUserId_Id(roomId, userId)).willReturn(Optional.of(participant));
 
-        // when
         List<RankingRes> result = roomService.getFinalRanking(roomId);
 
-        // then
         assertThat(result).hasSize(1);
         assertThat(result.get(0).nickname()).isEqualTo("우승자");
         assertThat(result.get(0).roundWinCount()).isEqualTo(3);
 
-        // 중요: Redis 데이터를 썼으므로 DB 전체 리스트 조회는 발생하지 않아야 함
         verify(participantRepository, never()).findByRoomId(roomId);
     }
 
     @Test
     @DisplayName("최종 랭킹 조회 시 Redis가 비어있으면 DB에서 데이터를 조회하는 Fallback 로직이 작동한다")
     void getFinalRanking_FallbackToDb() throws Exception {
-        // given
         Long roomId = 100L;
-        given(rankingService.getRankingList(roomId)).willReturn(Set.of()); // Redis 비어있음
+
+        given(rankingService.getRankingList(roomId)).willReturn(Set.of());
 
         User user = createUser(1L, "DB유저");
+
         Participant participant =
                 Participant.builder().userId(user).roundWinCount(2).build();
+
         given(participantRepository.findByRoomId(roomId)).willReturn(List.of(participant));
 
-        // when
         List<RankingRes> result = roomService.getFinalRanking(roomId);
 
-        // then
         assertThat(result).hasSize(1);
         assertThat(result.get(0).nickname()).isEqualTo("DB유저");
-        verify(participantRepository).findByRoomId(roomId); // DB 조회 발생 확인
+
+        verify(participantRepository).findByRoomId(roomId);
     }
 
     private Room createRoom(Long id, String title, Long hostId) throws Exception {
@@ -637,13 +723,17 @@ class RoomServiceTest {
                 .curPlayers((short) 1)
                 .participants(new ArrayList<>())
                 .build();
+
         setField(room, "id", id);
+
         return room;
     }
 
     private User createUser(Long id, String nickname) throws Exception {
         User user = User.builder().nickname(nickname).isAi(false).build();
+
         setField(user, "id", id);
+
         return user;
     }
 
