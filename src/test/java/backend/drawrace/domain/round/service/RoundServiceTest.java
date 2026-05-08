@@ -9,7 +9,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-import backend.drawrace.domain.room.service.RankingService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,6 +25,7 @@ import backend.drawrace.domain.room.entity.Participant;
 import backend.drawrace.domain.room.entity.Room;
 import backend.drawrace.domain.room.repository.ParticipantRepository;
 import backend.drawrace.domain.room.repository.RoomRepository;
+import backend.drawrace.domain.room.service.RankingService;
 import backend.drawrace.domain.room.service.RoomService;
 import backend.drawrace.domain.round.dto.AiInferenceResponse;
 import backend.drawrace.domain.round.dto.CurrentRoundResponse;
@@ -311,7 +311,8 @@ class RoundServiceTest {
 
         given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
         given(participantRepository.findByIdAndRoomId(participantId, roomId)).willReturn(Optional.of(participant));
-        given(roundParticipantRepository.existsByRoundIdAndParticipantId(roundId, participantId)).willReturn(true);
+        given(roundParticipantRepository.existsByRoundIdAndParticipantId(roundId, participantId))
+                .willReturn(true);
         given(aiInferenceService.infer("dummy-image", "사과")).willReturn(new AiInferenceResponse("사과", 0.95));
 
         given(roundSubmissionRepository.countActiveByRoundId(roundId)).willReturn(1L);
@@ -327,7 +328,8 @@ class RoundServiceTest {
         roundService.submitDrawing(roundId, 1L, request);
 
         Long winnerUserId = participant.getUserId().getId();
-        then(rankingService).should().updateScore(eq(roomId), eq(winnerUserId), eq(1.0));    }
+        then(rankingService).should().updateScore(eq(roomId), eq(winnerUserId), eq(1.0));
+    }
 
     @Test
     @DisplayName("라운드 종료 시 현재 제출자 점수와 라운드 승자 점수를 따로 반환한다")

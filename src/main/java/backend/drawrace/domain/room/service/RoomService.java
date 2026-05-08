@@ -9,7 +9,6 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.data.redis.core.ZSetOperations;
 
 import backend.drawrace.domain.chat.dto.ChatMessageDto;
 import backend.drawrace.domain.chat.service.AiChatService;
@@ -452,10 +451,11 @@ public class RoomService {
             return redisRanking.stream()
                     .map(tuple -> {
                         Long userId = Long.valueOf(tuple.getValue()); // Redis에 저장된 userId
-                        double score = tuple.getScore();             // Redis에 저장된 점수
+                        double score = tuple.getScore(); // Redis에 저장된 점수
 
                         // 참여자 정보 매핑 (닉네임 등을 위해 필요)
-                        return participantRepository.findByRoomIdAndUserId_Id(roomId, userId)
+                        return participantRepository
+                                .findByRoomIdAndUserId_Id(roomId, userId)
                                 .map(p -> RankingRes.builder()
                                         .userId(userId)
                                         .nickname(p.getUserId().getNickname())

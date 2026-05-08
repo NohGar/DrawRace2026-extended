@@ -4,7 +4,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
-import backend.drawrace.domain.room.service.RankingService;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -19,6 +18,7 @@ import backend.drawrace.domain.room.entity.Participant;
 import backend.drawrace.domain.room.entity.Room;
 import backend.drawrace.domain.room.repository.ParticipantRepository;
 import backend.drawrace.domain.room.repository.RoomRepository;
+import backend.drawrace.domain.room.service.RankingService;
 import backend.drawrace.domain.room.service.RoomService;
 import backend.drawrace.domain.round.dto.AiInferenceResponse;
 import backend.drawrace.domain.round.dto.CurrentRoundResponse;
@@ -285,10 +285,8 @@ public class RoundService {
 
         // Redis 실시간 점수 업데이트
         rankingService.updateScore(
-                round.getRoom().getId(),
-                roundWinner.getUserId().getId(),
-                1.0 // 1점씩 증가
-        );
+                round.getRoom().getId(), roundWinner.getUserId().getId(), 1.0 // 1점씩 증가
+                );
 
         round.finish();
 

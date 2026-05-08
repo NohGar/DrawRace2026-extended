@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-import backend.drawrace.domain.room.dto.response.RankingRes;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,6 +23,7 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import backend.drawrace.domain.chat.dto.ChatMessageDto;
 import backend.drawrace.domain.room.dto.request.CreateRoomReq;
 import backend.drawrace.domain.room.dto.response.GetRoomListRes;
+import backend.drawrace.domain.room.dto.response.RankingRes;
 import backend.drawrace.domain.room.dto.response.RoomInfoRes;
 import backend.drawrace.domain.room.dto.response.RoomUpdateResponse;
 import backend.drawrace.domain.room.entity.Participant;
@@ -616,7 +616,8 @@ class RoomServiceTest {
         given(rankingService.getRankingList(roomId)).willReturn(Set.of()); // Redis 비어있음
 
         User user = createUser(1L, "DB유저");
-        Participant participant = Participant.builder().userId(user).roundWinCount(2).build();
+        Participant participant =
+                Participant.builder().userId(user).roundWinCount(2).build();
         given(participantRepository.findByRoomId(roomId)).willReturn(List.of(participant));
 
         // when
