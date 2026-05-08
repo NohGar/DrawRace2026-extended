@@ -23,6 +23,7 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import backend.drawrace.domain.chat.dto.ChatMessageDto;
 import backend.drawrace.domain.room.dto.request.CreateRoomReq;
 import backend.drawrace.domain.room.dto.response.GetRoomListRes;
+import backend.drawrace.domain.room.dto.response.RankingRes;
 import backend.drawrace.domain.room.dto.response.RoomInfoRes;
 import backend.drawrace.domain.room.dto.response.RoomUpdateResponse;
 import backend.drawrace.domain.room.entity.Participant;
@@ -575,6 +576,57 @@ class RoomServiceTest {
         List<GetRoomListRes> result = roomService.getRoomList();
 
         assertThat(result).isEmpty();
+    }
+
+    @Test
+    @DisplayName("최종 랭킹 조회 시 Redis에 데이터가 있으면 DB 전체 조회를 생략하고 Redis 데이터를 반환한다")
+    void getFinalRanking_PriorityRedis() throws Exception {
+        // given
+        Long roomId = 100L;
+        Long userId = 1L;
+
+        // Redis 결과 모킹 (TypedTuple)
+        ZSetOperations.TypedTuple<String> tuple = mock(ZSetOperations.TypedTuple.class);
+        given(tuple.getValue()).willReturn(String.valueOf(userId));
+        given(tuple.getScore()).willReturn(3.0);
+        given(rankingService.getRankingList(roomId)).willReturn(Set.of(tuple));
+
+        // DB 개별 조회 모킹
+        User user = createUser(userId, "우승자");
+        Participant participant = Participant.builder().userId(user).build();
+        given(participantRepository.findByRoomIdAndUserId_Id(roomId, userId)).willReturn(Optional.of(participant));
+
+        // when
+        List<RankingRes> result = roomService.getFinalRanking(roomId);
+
+        // then
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).nickname()).isEqualTo("우승자");
+        assertThat(result.get(0).roundWinCount()).isEqualTo(3);
+
+        // 중요: Redis 데이터를 썼으므로 DB 전체 리스트 조회는 발생하지 않아야 함
+        verify(participantRepository, never()).findByRoomId(roomId);
+    }
+
+    @Test
+    @DisplayName("최종 랭킹 조회 시 Redis가 비어있으면 DB에서 데이터를 조회하는 Fallback 로직이 작동한다")
+    void getFinalRanking_FallbackToDb() throws Exception {
+        // given
+        Long roomId = 100L;
+        given(rankingService.getRankingList(roomId)).willReturn(Set.of()); // Redis 비어있음
+
+        User user = createUser(1L, "DB유저");
+        Participant participant =
+                Participant.builder().userId(user).roundWinCount(2).build();
+        given(participantRepository.findByRoomId(roomId)).willReturn(List.of(participant));
+
+        // when
+        List<RankingRes> result = roomService.getFinalRanking(roomId);
+
+        // then
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).nickname()).isEqualTo("DB유저");
+        verify(participantRepository).findByRoomId(roomId); // DB 조회 발생 확인
     }
 
     private Room createRoom(Long id, String title, Long hostId) throws Exception {

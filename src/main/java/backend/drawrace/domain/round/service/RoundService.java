@@ -18,6 +18,7 @@ import backend.drawrace.domain.room.entity.Participant;
 import backend.drawrace.domain.room.entity.Room;
 import backend.drawrace.domain.room.repository.ParticipantRepository;
 import backend.drawrace.domain.room.repository.RoomRepository;
+import backend.drawrace.domain.room.service.RankingService;
 import backend.drawrace.domain.room.service.RoomService;
 import backend.drawrace.domain.round.dto.AiInferenceResponse;
 import backend.drawrace.domain.round.dto.CurrentRoundResponse;
@@ -62,6 +63,7 @@ public class RoundService {
     private final TaskScheduler taskScheduler;
     private static final int ROUND_TIME_LIMIT = 20;
     private final RoomService roomService;
+    private final RankingService rankingService;
 
     /**
      * 게임 시작 처리
@@ -280,6 +282,12 @@ public class RoundService {
 
         Participant roundWinner = winnerSubmission.getParticipant();
         roundWinner.increaseRoundWinCount();
+
+        // Redis 실시간 점수 업데이트
+        rankingService.updateScore(
+                round.getRoom().getId(), roundWinner.getUserId().getId(), 1.0 // 1점씩 증가
+                );
+
         round.finish();
 
         Long roomId = round.getRoom().getId();

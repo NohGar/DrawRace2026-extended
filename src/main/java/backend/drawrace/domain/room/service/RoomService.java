@@ -443,17 +443,40 @@ public class RoomService {
     }
 
     public List<RankingRes> getFinalRanking(Long roomId) {
-        // 해당 방의 모든 참여자 조회
-        List<Participant> participants = participantRepository.findByRoomId(roomId);
+        //  Redis에서 정렬된 랭킹 리스트 가져옴
+        var redisRanking = rankingService.getRankingList(roomId);
 
-        return participants.stream()
+        // Redis에 데이터가 있다면
+        if (redisRanking != null && !redisRanking.isEmpty()) {
+            return redisRanking.stream()
+                    .map(tuple -> {
+                        Long userId = Long.valueOf(tuple.getValue()); // Redis에 저장된 userId
+                        double score = tuple.getScore(); // Redis에 저장된 점수
+
+                        // 참여자 정보 매핑 (닉네임 등을 위해 필요)
+                        return participantRepository
+                                .findByRoomIdAndUserId_Id(roomId, userId)
+                                .map(p -> RankingRes.builder()
+                                        .userId(userId)
+                                        .nickname(p.getUserId().getNickname())
+                                        .roundWinCount((int) score)
+                                        .isWinner(p.isWinner())
+                                        .build())
+                                .orElse(null);
+                    })
+                    .filter(java.util.Objects::nonNull)
+                    .toList();
+        }
+
+        // Redis가 비어있다면 기존 DB 로직을 Fallback으로 사용
+        return participantRepository.findByRoomId(roomId).stream()
                 .map(p -> RankingRes.builder()
                         .userId(p.getUserId().getId())
                         .nickname(p.getUserId().getNickname())
                         .roundWinCount(p.getRoundWinCount())
                         .isWinner(p.isWinner())
                         .build())
-                .sorted((a, b) -> b.roundWinCount() - a.roundWinCount()) // 승리 횟수 내림차순 정렬
+                .sorted((a, b) -> b.roundWinCount() - a.roundWinCount())
                 .toList();
     }
 
