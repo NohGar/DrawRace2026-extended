@@ -67,6 +67,8 @@ dependencies {
     implementation("io.jsonwebtoken:jjwt-api:0.12.5")
     runtimeOnly("io.jsonwebtoken:jjwt-impl:0.12.5")
     runtimeOnly("io.jsonwebtoken:jjwt-jackson:0.12.5")
+
+    implementation("io.awspring.cloud:spring-cloud-aws-starter-s3:3.1.1")
 }
 
 tasks.withType<Test> {

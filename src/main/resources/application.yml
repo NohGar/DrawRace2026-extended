@@ -29,6 +29,14 @@ spring:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.H2Dialect
+  cloud:
+    aws:
+      region:
+        static: ${AWS_REGION:ap-northeast-2}
+        auto: false
+      credentials:
+        access-key: ${AWS_ACCESS_KEY_ID:test}
+        secret-key: ${AWS_SECRET_ACCESS_KEY:test}
 
 jwt:
   secret: ${JWT_SECRET_KEY:your_default_secret_key_at_least_32_bytes_long}

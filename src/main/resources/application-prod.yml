@@ -43,10 +43,14 @@ ai:
     model: ${AI_MODEL:}
 
 storage:
-  mode: local
+  mode: ${STORAGE_MODE:s3}
   local:
     upload-dir: ${STORAGE_LOCAL_UPLOAD_DIR:/home/ubuntu/uploads}
     base-url: ${STORAGE_LOCAL_BASE_URL:http://localhost:8080/files/uploads}
+  s3:
+    bucket: ${STORAGE_S3_BUCKET}
+    region: ${STORAGE_S3_REGION:ap-northeast-2}
+    base-url: ${STORAGE_S3_BASE_URL}
 
 logging:
   level:
