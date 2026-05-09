@@ -14,7 +14,9 @@ import backend.drawrace.global.exception.ServiceException;
 import backend.drawrace.global.security.SecurityUser;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Controller
 @RequiredArgsConstructor
 public class ChatController {
@@ -32,6 +34,9 @@ public class ChatController {
             return; // 아무것도 하지 않고 종료
         }
 
+        org.springframework.util.StopWatch stopWatch = new org.springframework.util.StopWatch();
+        stopWatch.start();
+
         SecurityUser securityUser = (SecurityUser) authentication.getPrincipal();
 
         User user = userRepository
@@ -39,13 +44,17 @@ public class ChatController {
                 .orElseThrow(() -> new ServiceException("404-1", "유저를 찾을 수 없습니다."));
 
         // AI 검열 실행
-        String filteredMessage =
-                chatModerationService.filterMessage(securityUser.getUserId(), chatMessage.getMessage());
+        String filteredMessage = chatModerationService.fastFilter(securityUser.getUserId(), chatMessage.getMessage());
+
+        stopWatch.stop();
+        log.info("[성능체크] 채팅 필터링 완료 - 소요시간: {}ms, 메시지: {}", stopWatch.getTotalTimeMillis(), filteredMessage);
 
         chatMessage.setSender(user.getNickname());
         chatMessage.setMessage(filteredMessage);
         // 일반 채팅은 TALK 타입으로 고정하여 브로드캐스팅
         chatMessage.setType(ChatMessageDto.MessageType.TALK);
         messagingTemplate.convertAndSend("/sub/rooms/" + roomId + "/chat", chatMessage);
+
+        chatModerationService.processAiModeration(roomId, chatMessage);
     }
 }
