@@ -72,7 +72,7 @@ dependencies {
     // PyTorch
     implementation("ai.djl:api:0.25.0")
     implementation("ai.djl.pytorch:pytorch-engine:0.25.0")
-    runtimeOnly("ai.djl.pytorch:pytorch-native-auto:2.1.0")
+    runtimeOnly("ai.djl.pytorch:pytorch-native-auto:0.25.0")
     implementation("ai.djl.huggingface:tokenizers:0.25.0")
 
     implementation("io.awspring.cloud:spring-cloud-aws-starter-s3:3.1.1")
