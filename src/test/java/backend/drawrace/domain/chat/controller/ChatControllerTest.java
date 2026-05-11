@@ -56,7 +56,7 @@ class ChatControllerTest {
         User user = User.builder().nickname(realNickname).build();
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
 
-        when(chatModerationService.filterMessage(anyLong(), anyString()))
+        when(chatModerationService.fastFilter(anyLong(), anyString()))
                 .thenAnswer(invocation -> invocation.getArgument(1));
 
         chatController.sendChatMessage(roomId, requestDto, auth);
@@ -99,17 +99,37 @@ class ChatControllerTest {
 
         User user = User.builder().nickname("유저A").build();
         when(userRepository.findById(anyLong())).thenReturn(Optional.of(user));
-        when(chatModerationService.filterMessage(anyLong(), eq(raw))).thenReturn(filtered); // 가짜 응답
+        when(chatModerationService.fastFilter(anyLong(), eq(raw))).thenReturn(filtered); // 가짜 응답
 
         SecurityUser securityUser = new SecurityUser(1L, "test@test.com");
         Authentication auth = new UsernamePasswordAuthenticationToken(securityUser, null, null);
 
-        // When
         chatController.sendChatMessage(roomId, requestDto, auth);
 
-        // Then: 최종적으로 나가는 메시지가 '필터링된 문구'인지 확인!
         verify(messagingTemplate)
                 .convertAndSend(eq("/sub/rooms/" + roomId + "/chat"), argThat((ChatMessageDto dto) -> dto.getMessage()
                         .equals(filtered)));
+    }
+
+    @Test
+    @DisplayName("채팅 전송 시 로컬 필터를 거쳐 즉시 전송되고 AI 검사가 비동기로 호출된다")
+    void shouldSendFastAndCallAsyncAi() {
+        Long roomId = 1L;
+        ChatMessageDto requestDto = ChatMessageDto.builder().message("안녕").build();
+
+        SecurityUser securityUser = new SecurityUser(1L, "test@test.com");
+        Authentication auth =
+                new UsernamePasswordAuthenticationToken(securityUser, null, securityUser.getAuthorities());
+
+        User user = User.builder().nickname("유저").build();
+        when(userRepository.findById(1L)).thenReturn(Optional.of(user));
+
+        when(chatModerationService.fastFilter(anyLong(), anyString())).thenReturn("안녕");
+
+        chatController.sendChatMessage(roomId, requestDto, auth);
+
+        verify(messagingTemplate).convertAndSend(eq("/sub/rooms/" + roomId + "/chat"), any(ChatMessageDto.class));
+
+        verify(chatModerationService).processAiModeration(eq(roomId), any(ChatMessageDto.class));
     }
 }
