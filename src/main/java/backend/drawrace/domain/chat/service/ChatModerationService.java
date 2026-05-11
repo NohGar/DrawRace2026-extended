@@ -1,12 +1,18 @@
 package backend.drawrace.domain.chat.service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import jakarta.annotation.PostConstruct;
+
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
+import backend.drawrace.domain.chat.dto.ChatMessageDto;
 import backend.drawrace.domain.round.dto.gateway.GatewayChatRequest;
 import backend.drawrace.domain.round.dto.gateway.GatewayChatResponse;
 import backend.drawrace.global.config.AiProperties;
@@ -21,7 +27,127 @@ import lombok.extern.slf4j.Slf4j;
 public class ChatModerationService {
 
     private final AiProperties aiProperties;
+    private final RestClient restClient;
+    private final SimpMessagingTemplate messagingTemplate;
+    private final EmbeddingService embeddingService;
 
+    private final Map<Long, LastChatInfo> chatHistory = new ConcurrentHashMap<>();
+    private final List<float[]> aggressiveVectors = new ArrayList<>();
+
+    private static final int SPAM_LIMIT_MS = 1000;
+    private static final String BANNED_PATTERN = ".*(시발|병신|개새끼|패드립|느금).*";
+    private static final double SIMILARITY_THRESHOLD = 0.82;
+
+    @PostConstruct
+    public void initAggressiveVectors() {
+        List<String> samples = List.of(
+                "너 진짜 지능 낮냐",
+                "그림 진짜 못 그린다",
+                "손가락 장애 있음?",
+                "나가 죽어라",
+                "뇌가 없나보네",
+                "진짜 극혐이다",
+                "손가락 문제 있냐",
+                "가정교육 독학했냐",
+                "부모님 안 계시냐",
+                "부모님 홀수냐");
+        for (String sample : samples) {
+            aggressiveVectors.add(embeddingService.embed(sample));
+        }
+        log.info("공격적 문장 임베딩 데이터 {}건 로드 완료!", aggressiveVectors.size());
+    }
+
+    public String fastFilter(Long userId, String originalMessage) {
+        // 도배 체크
+        checkSpam(userId, originalMessage);
+
+        String normalized = originalMessage.replaceAll("[^가-힣]", "");
+
+        String BANNED_PATTERN = ".*(시발|ㅅㅂ|씨발|병신|ㅂㅅ|새끼|야발|지랄|니미|느금|ㅗ).*";
+
+        // 키워드 기반 즉시 차단
+        if (originalMessage.matches(BANNED_PATTERN)) {
+            return "****"; // 욕설 발견 시 즉시 마스킹
+        }
+
+        // 임베딩 유사도 체크
+        float[] currentVector = embeddingService.embed(originalMessage);
+
+        // 미리 저장해둔 나쁜 문장들과 하나씩 비교
+        for (float[] badVector : aggressiveVectors) {
+            double similarity = embeddingService.calculateSimilarity(currentVector, badVector);
+            if (similarity > SIMILARITY_THRESHOLD) {
+                log.info("임베딩 검열 감지 (유사도: {}): {}", similarity, originalMessage);
+                return "[부적절한 메시지입니다]";
+            }
+        }
+
+        return originalMessage; // 깨끗하면 원문 그대로 즉시 반환
+    }
+
+    @Async("taskExecutor")
+    public void processAiModeration(Long roomId, ChatMessageDto chatMessage) {
+        try {
+
+            String aiResult = getAiDecisionStrict(chatMessage.getMessage());
+
+            if ("1".equals(aiResult)) {
+                // 부적절하다고 판단되면 메시지를 교체하고 다시 브로드캐스트
+                chatMessage.setMessage("[AI 검열에 의해 삭제된 메시지입니다]");
+                messagingTemplate.convertAndSend("/sub/rooms/" + roomId + "/chat", chatMessage);
+                log.info("AI가 부적절한 메시지 감지 및 수정 완료: {}", chatMessage.getMessage());
+            }
+        } catch (Exception e) {
+            log.error("비동기 AI 검열 중 오류 발생: {}", e.getMessage());
+        }
+    }
+
+    private String getAiDecisionStrict(String message) {
+        String systemPrompt = """
+                너는 온라인 게임의 채팅 검열관이야.
+                사용자의 메시지가 욕설, 비하, 따돌림, 혹은 심각한 공격성을 띄는지 판단해.
+                [규칙]
+                - 부적절하면 오직 '1'만 출력.
+                - 적절하면 오직 '0'만 출력.
+                - 다른 설명은 절대 금지.
+                """;
+
+        try {
+            GatewayChatRequest request = GatewayChatRequest.builder()
+                    .model(aiProperties.model())
+                    .messages(List.of(
+                            GatewayChatRequest.systemMessage(systemPrompt), GatewayChatRequest.userMessage(message)))
+                    .temperature(0.0)
+                    .build();
+
+            GatewayChatResponse response = restClient
+                    .post()
+                    .uri("/chat/completions")
+                    .body(request)
+                    .retrieve()
+                    .toEntity(GatewayChatResponse.class)
+                    .getBody();
+
+            return response.getChoices().get(0).getMessage().getContent().trim();
+        } catch (Exception e) {
+            return "0";
+        }
+    }
+
+    private void checkSpam(Long userId, String message) {
+        long now = System.currentTimeMillis();
+        LastChatInfo last = chatHistory.get(userId);
+
+        if (last != null) {
+            if (now - last.timestamp < SPAM_LIMIT_MS) throw new ServiceException("429-1", "채팅이 너무 빠릅니다.");
+            if (last.message.equals(message)) throw new ServiceException("429-2", "동일한 내용의 채팅입니다.");
+        }
+        chatHistory.put(userId, new LastChatInfo(message, now));
+    }
+
+    private record LastChatInfo(String message, long timestamp) {}
+
+    /*
     private final Map<Long, LastChatInfo> chatHistory = new ConcurrentHashMap<>();
     private static final int SPAM_LIMIT_MS = 1000;
 
@@ -114,4 +240,6 @@ public class ChatModerationService {
     }
 
     private record LastChatInfo(String message, long timestamp) {}
+
+     */
 }
