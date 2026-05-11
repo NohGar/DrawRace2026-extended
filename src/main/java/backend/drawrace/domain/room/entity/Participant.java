@@ -5,13 +5,13 @@ import jakarta.persistence.*;
 import backend.drawrace.domain.user.entity.User;
 import backend.drawrace.global.entity.BaseEntity;
 
-import lombok.AccessLevel;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 @Entity
 @Getter
+@Builder
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
+@AllArgsConstructor(access = AccessLevel.PROTECTED)
 public class Participant extends BaseEntity {
 
     @Id
@@ -21,15 +21,41 @@ public class Participant extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
-    private User user;
+    private User userId;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "room_id", nullable = false)
     private Room room;
 
+    @Column(name = "round_win_count", nullable = false)
+    @Builder.Default
     private int roundWinCount = 0;
 
+    @Column(name = "is_winner", nullable = false)
+    @Builder.Default
     private boolean isWinner = false;
 
-    private boolean isHost = false;
+    @Column(name = "is_host", nullable = false)
+    private boolean isHost;
+
+    @Column(name = "is_left", nullable = false)
+    @Builder.Default
+    private boolean isLeft = false;
+
+    public void increaseRoundWinCount() {
+        this.roundWinCount++;
+    }
+
+    public void markWinner() {
+        this.isWinner = true;
+    }
+
+    public void makeHost() {
+        this.isHost = true;
+    }
+
+    public void leave() {
+        this.isLeft = true;
+        this.isHost = false;
+    }
 }

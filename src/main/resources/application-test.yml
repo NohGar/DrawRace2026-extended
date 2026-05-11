@@ -21,3 +21,18 @@ spring:
     redis:
       host: localhost
       port: 6379
+
+spring:
+  cloud:
+    aws:
+      region:
+        static: ap-northeast-2
+        auto: false
+      credentials:
+        access-key: test
+        secret-key: test
+
+jwt:
+  secret: test-secret-key-for-testing-purpose-only-32bytes
+  access-expiration: 3600000
+  refresh-expiration: 604800000

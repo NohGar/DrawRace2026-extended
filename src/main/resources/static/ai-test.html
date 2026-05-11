@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+</head>
+<body>
+<input id="keyword" placeholder="키워드 입력" />
+<button onclick="test()">생성</button>
+<br/><br/>
+<canvas id="result" width="256" height="256" style="border:1px solid #000;"></canvas>
+
+<script>
+    let animationTimer = null;
+
+    async function test() {
+        const keyword = document.getElementById('keyword').value;
+        const res = await fetch(`/api/ai/test?keyword=${keyword}`);
+        const data = await res.json();
+        animateStrokes(data.strokes);
+    }
+
+    function animateStrokes(strokes) {
+        const canvas = document.getElementById('result');
+        const ctx = canvas.getContext('2d');
+
+        if (animationTimer) {
+            clearTimeout(animationTimer);
+            animationTimer = null;
+        }
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 2;
+        ctx.lineCap = 'round';
+
+        let strokeIndex = 0;
+        let pointIndex = 0;
+
+        function drawNextPoint() {
+            if (strokeIndex >= strokes.length) return;
+
+            const stroke = strokes[strokeIndex];
+            const xs = stroke[0];
+            const ys = stroke[1];
+
+            if (pointIndex === 0) {
+                ctx.beginPath();
+                ctx.moveTo(xs[0], ys[0]);
+                pointIndex = 1;
+            }
+
+            if (pointIndex < xs.length) {
+                ctx.lineTo(xs[pointIndex], ys[pointIndex]);
+                ctx.stroke();
+                pointIndex++;
+            } else {
+                strokeIndex++;
+                pointIndex = 0;
+            }
+
+            animationTimer = setTimeout(drawNextPoint, 200);
+        }
+
+        drawNextPoint();
+    }
+</script>
+</body>
+</html>

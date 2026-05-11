@@ -1,4 +1,17 @@
 spring:
+  config:
+    import: optional:file:.env[.properties]
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+  output:
+    ansi:
+      enabled: ALWAYS
+  data:
+    redis:
+      host: localhost
+      port: 6379
   datasource:
     url: jdbc:h2:mem:drawrace;MODE=MySQL
     driver-class-name: org.h2.Driver
@@ -16,3 +29,29 @@ spring:
       hibernate:
         format_sql: true
         dialect: org.hibernate.dialect.H2Dialect
+  cloud:
+    aws:
+      region:
+        static: ${AWS_REGION:ap-northeast-2}
+        auto: false
+      credentials:
+        access-key: ${AWS_ACCESS_KEY_ID:test}
+        secret-key: ${AWS_SECRET_ACCESS_KEY:test}
+
+jwt:
+  secret: ${JWT_SECRET_KEY:your_default_secret_key_at_least_32_bytes_long}
+  access-expiration: 3600000
+  refresh-expiration: 604800000
+
+ai:
+  mode: quickdraw
+  gateway:
+    base-url: ${AI_GATEWAY_BASE_URL:}
+    api-key: ${AI_GATEWAY_API_KEY:}
+    model: ${AI_MODEL:}
+
+storage:
+  mode: local
+  local:
+    upload-dir: ${STORAGE_LOCAL_UPLOAD_DIR:uploads}
+    base-url: ${STORAGE_LOCAL_BASE_URL:http://localhost:8080/files/uploads}
