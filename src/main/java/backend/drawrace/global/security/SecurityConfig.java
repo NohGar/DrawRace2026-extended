@@ -73,7 +73,9 @@ public class SecurityConfig {
         config.setAllowedOriginPatterns(List.of(
                 "https://int-1-project-team05-fe.vercel.app",
                 "https://int-1-project-team05-fe-*.vercel.app",
-                "http://localhost:3000"));
+                "http://localhost:3000",
+                "https://drawrace.site",
+                "https://www.drawrace.site"));
 
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
