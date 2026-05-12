@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import java.util.Optional;
@@ -38,6 +39,9 @@ class AuthServiceTest {
 
     @MockBean
     GuestNicknameGenerator nicknameGenerator;
+
+    @MockBean
+    NicknamePoolService nicknamePoolService;
 
     @AfterEach
     void tearDown() {
@@ -221,6 +225,29 @@ class AuthServiceTest {
         LoginResponse response = authService.guestLogin();
 
         assertThat(response.accessToken()).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("게스트_로그인_성공_풀에서_닉네임_가져옴")
+    void guestLogin_success_from_pool() {
+        given(nicknamePoolService.pop()).willReturn("풀닉네임");
+
+        LoginResponse response = authService.guestLogin();
+
+        assertThat(response.accessToken()).isNotBlank();
+        verify(nicknameGenerator, never()).generate();
+    }
+
+    @Test
+    @DisplayName("게스트_로그인_성공_풀_비었을_때_GLM_호출")
+    void guestLogin_success_fallback_to_generator_when_pool_empty() {
+        given(nicknamePoolService.pop()).willReturn(null);
+        given(nicknameGenerator.generate()).willReturn("GLM닉네임");
+
+        LoginResponse response = authService.guestLogin();
+
+        assertThat(response.accessToken()).isNotBlank();
+        verify(nicknameGenerator).generate();
     }
 
     @Test
