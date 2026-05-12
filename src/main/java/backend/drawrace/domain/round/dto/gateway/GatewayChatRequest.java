@@ -3,16 +3,23 @@ package backend.drawrace.domain.round.dto.gateway;
 import java.util.List;
 import java.util.Map;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import lombok.Builder;
 import lombok.Getter;
 
 @Getter
 @Builder
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class GatewayChatRequest {
 
     private String model;
     private List<Message> messages;
     private double temperature;
+
+    @JsonProperty("max_tokens")
+    private Integer maxTokens;
 
     @Getter
     @Builder
