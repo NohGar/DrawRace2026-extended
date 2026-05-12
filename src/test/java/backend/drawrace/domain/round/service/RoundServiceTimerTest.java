@@ -23,6 +23,7 @@ import backend.drawrace.domain.room.dto.response.GameEvent;
 import backend.drawrace.domain.room.entity.Room;
 import backend.drawrace.domain.room.repository.ParticipantRepository;
 import backend.drawrace.domain.room.repository.RoomRepository;
+import backend.drawrace.domain.room.service.RankingService;
 import backend.drawrace.domain.room.service.RoomService;
 import backend.drawrace.domain.round.entity.Round;
 import backend.drawrace.domain.round.entity.RoundStatus;
@@ -68,6 +69,9 @@ class RoundServiceTimerTest {
     private RoomService roomService;
 
     @Mock
+    private RankingService rankingService;
+
+    @Mock
     private RoundSubmissionRepository roundSubmissionRepository;
 
     @Mock
@@ -80,7 +84,7 @@ class RoundServiceTimerTest {
     private org.springframework.beans.factory.ObjectProvider<AiChatService> aiChatServiceProvider;
 
     @Test
-    @DisplayName("게임 시작 시 20초 스케줄러가 등록되어야 한다")
+    @DisplayName("게임 시작 시 60초 스케줄러가 등록되어야 한다")
     void startGameTimerScheduleTest() {
         Long roomId = 1L;
         Room room = Room.builder().build();
@@ -88,6 +92,8 @@ class RoundServiceTimerTest {
         ReflectionTestUtils.setField(room, "hostId", 1L);
 
         when(roomRepository.findById(roomId)).thenReturn(Optional.of(room));
+        when(participantRepository.countByRoomIdAndIsLeftFalse(roomId)).thenReturn(1L);
+        when(roundRepository.findByRoomIdAndIsActiveTrue(roomId)).thenReturn(Optional.empty());
         when(participantRepository.findByRoomIdAndIsLeftFalse(roomId)).thenReturn(List.of());
         when(keywordGenerator.generateKeyword()).thenReturn("사과");
 
@@ -99,6 +105,7 @@ class RoundServiceTimerTest {
 
         roundService.startGame(roomId, 1L);
 
+        verify(rankingService).clearRanking(roomId);
         verify(taskScheduler).schedule(any(Runnable.class), any(Instant.class));
     }
 
@@ -110,6 +117,7 @@ class RoundServiceTimerTest {
         ReflectionTestUtils.setField(room, "id", 1L);
 
         Round round = Round.create(room, 1, "사과");
+        ReflectionTestUtils.setField(round, "id", roundId);
         ReflectionTestUtils.setField(round, "status", RoundStatus.IN_PROGRESS);
 
         when(roundRepository.findById(roundId)).thenReturn(Optional.of(round));
