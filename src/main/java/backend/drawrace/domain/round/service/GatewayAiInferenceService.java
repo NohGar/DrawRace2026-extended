@@ -61,6 +61,7 @@ public class GatewayAiInferenceService implements AiInferenceService {
         GatewayChatRequest request = GatewayChatRequest.builder()
                 .model(aiProperties.model())
                 .temperature(0.2)
+                .maxTokens(1024)
                 .messages(List.of(
                         GatewayChatRequest.systemMessage(buildSystemPrompt()),
                         GatewayChatRequest.userMessage(List.of(

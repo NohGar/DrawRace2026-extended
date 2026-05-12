@@ -58,4 +58,9 @@ public class Participant extends BaseEntity {
         this.isLeft = true;
         this.isHost = false;
     }
+
+    public void resetGameResult() {
+        this.roundWinCount = 0;
+        this.isWinner = false;
+    }
 }

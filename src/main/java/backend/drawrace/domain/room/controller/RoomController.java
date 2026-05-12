@@ -106,6 +106,16 @@ public class RoomController {
         return new RsData<>("200-1", "랭킹 조회 성공", ranking);
     }
 
+    @Operation(summary = "친구 초대")
+    @PostMapping("/{roomId}/invite/{friendId}")
+    public RsData<Void> inviteFriend(
+            @PathVariable Long roomId,
+            @PathVariable Long friendId,
+            @AuthenticationPrincipal SecurityUser securityUser) {
+        roomService.inviteFriend(roomId, securityUser.getUserId(), friendId);
+        return new RsData<>("200-8", "초대를 전송했습니다.");
+    }
+
     @Operation(summary = "AI 참가자 추가")
     @PostMapping("/{roomId}/ai-participants")
     public RsData<RoomInfoRes> addAiParticipant(

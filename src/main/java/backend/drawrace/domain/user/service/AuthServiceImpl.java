@@ -31,6 +31,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final RefreshTokenRepository refreshTokenRepository;
     private final GuestNicknameGenerator nicknameGenerator;
+    private final NicknamePoolService nicknamePoolService;
 
     @Override
     @Transactional
@@ -114,7 +115,11 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public LoginResponse guestLogin() {
-        String nickname = resolveNickname(nicknameGenerator.generate());
+        String base = nicknamePoolService.pop();
+        if (base == null) {
+            base = nicknameGenerator.generate();
+        }
+        String nickname = resolveNickname(base);
 
         User guest = User.builder()
                 .email("guest_" + UUID.randomUUID() + "@drawrace.com")
