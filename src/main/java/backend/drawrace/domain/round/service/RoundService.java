@@ -73,12 +73,17 @@ public class RoundService {
      */
     @Transactional
     public RoundStartResponse startGame(Long roomId, Long userId) {
-        Room room = roomRepository.findById(roomId).orElseThrow(() -> new ServiceException("404-1", "존재하지 않는 방입니다."));
+        Room room = roomRepository.findById(roomId)
+                .orElseThrow(() -> new ServiceException("404-1", "존재하지 않는 방입니다."));
 
         long participantCount = participantRepository.countByRoomIdAndIsLeftFalse(roomId);
 
         roundValidator.validateStartGame(
                 room, participantCount, roundRepository.findByRoomIdAndIsActiveTrue(roomId), userId);
+
+        // 새 게임 시작 시 이전 게임 결과 초기화
+        List<Participant> participants = participantRepository.findByRoomIdAndIsLeftFalse(roomId);
+        resetRoomGameState(roomId, participants);
 
         String keyword = keywordGenerator.generateKeyword();
 
@@ -94,7 +99,6 @@ public class RoundService {
         scheduleRoundTimeout(savedRound.getId());
 
         // 라운드 참가자 등록은 현재 퇴장하지 않은 참가자만 대상으로 한다.
-        List<Participant> participants = participantRepository.findByRoomIdAndIsLeftFalse(roomId);
         saveRoundParticipants(savedRound, participants);
         triggerAiIfPresent(savedRound, participants);
         triggerAiChatOnRoundStart(roomId, keyword, participants);
@@ -104,6 +108,12 @@ public class RoundService {
         eventPublisher.publishEvent(new GameStartedEvent(roomId, response));
 
         return response;
+    }
+
+    //새 게임 시작 전에 방의 게임 상태를 초기화
+    private void resetRoomGameState(Long roomId, List<Participant> participants) {
+        participants.forEach(Participant::resetGameResult);
+        rankingService.clearRanking(roomId);
     }
 
     // 지정된 시간 뒤에 라운드를 강제로 종료
@@ -120,7 +130,8 @@ public class RoundService {
         Round round = roundRepository.findById(roundId).orElse(null);
         if (round == null || round.getStatus() != RoundStatus.IN_PROGRESS) return;
 
-        log.info("20초 경과! 해당 방의 모든 클라이언트에 강제 제출 명령을 보냅니다. roundId={}", roundId);
+        log.info("{}초 경과! 해당 방의 모든 클라이언트에 강제 제출 명령을 보냅니다. roundId={}",
+                ROUND_TIME_LIMIT, roundId);
 
         // 현재까지 그린 걸 제출
         // 구독 경로: /sub/rooms/{roomId}
