@@ -122,9 +122,13 @@ class RoundServiceTest {
         RoundStartResponse response = roundService.startGame(roomId, hostId);
 
         then(roundValidator).should().validateStartGame(eq(room), eq(2L), eq(Optional.empty()), eq(hostId));
+
         then(roundParticipantRepository)
                 .should()
                 .saveAll(argThat((Iterable<RoundParticipant> iterable) -> countIterable(iterable) == 2));
+
+        // 새 게임 시작 시 Redis 랭킹 초기화 확인
+        then(rankingService).should().clearRanking(roomId);
 
         assertThat(response.getRoomId()).isEqualTo(roomId);
         assertThat(response.getRoundId()).isEqualTo(10L);
@@ -132,12 +136,57 @@ class RoundServiceTest {
         assertThat(response.getKeyword()).isEqualTo("사과");
         assertThat(response.getStatus()).isEqualTo(RoundStatus.IN_PROGRESS);
         assertThat(response.getStartedAt()).isNotNull();
+
+        // 라운드 제한 시간 60초 확인
+        assertThat(response.getTimeLimit()).isEqualTo(60);
+
         assertThat(room.isPlaying()).isTrue();
 
         ArgumentCaptor<GameStartedEvent> eventCaptor = ArgumentCaptor.forClass(GameStartedEvent.class);
         then(eventPublisher).should().publishEvent(eventCaptor.capture());
         assertThat(eventCaptor.getValue().getRoomId()).isEqualTo(roomId);
         assertThat(eventCaptor.getValue().getRoundStartResponse().getKeyword()).isEqualTo("사과");
+    }
+
+    @Test
+    @DisplayName("게임 시작 시 이전 게임의 라운드 승수와 우승 표시를 초기화한다")
+    void startGame_resetPreviousGameState() throws Exception {
+        Long roomId = 1L;
+        Long hostId = 1L;
+
+        Room room = createRoom(roomId, false, hostId);
+
+        Participant participant1 = createParticipant(100L, room, 2);
+        Participant participant2 = createParticipant(101L, room, 1);
+
+        // 이전 게임 결과가 남아 있는 상황
+        participant1.markWinner();
+
+        given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(participantRepository.countByRoomIdAndIsLeftFalse(roomId)).willReturn(2L);
+        given(roundRepository.findByRoomIdAndIsActiveTrue(roomId)).willReturn(Optional.empty());
+        given(keywordGenerator.generateKeyword()).willReturn("사과");
+        given(participantRepository.findByRoomIdAndIsLeftFalse(roomId)).willReturn(List.of(participant1, participant2));
+        given(roundRepository.save(any(Round.class))).willAnswer(invocation -> {
+            Round saved = invocation.getArgument(0);
+            setField(saved, "id", 10L);
+            return saved;
+        });
+
+        RoundStartResponse response = roundService.startGame(roomId, hostId);
+
+        assertThat(response).isNotNull();
+
+        // 새 게임 시작 시 이전 라운드 승수 초기화
+        assertThat(participant1.getRoundWinCount()).isZero();
+        assertThat(participant2.getRoundWinCount()).isZero();
+
+        // 새 게임 시작 시 이전 우승 표시 초기화
+        assertThat(participant1.isWinner()).isFalse();
+        assertThat(participant2.isWinner()).isFalse();
+
+        // Redis 랭킹도 초기화
+        then(rankingService).should().clearRanking(roomId);
     }
 
     @Test
