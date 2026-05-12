@@ -26,6 +26,7 @@ import backend.drawrace.domain.room.dto.request.CreateRoomReq;
 import backend.drawrace.domain.room.dto.response.GetRoomListRes;
 import backend.drawrace.domain.room.dto.response.RankingRes;
 import backend.drawrace.domain.room.dto.response.RoomInfoRes;
+import backend.drawrace.domain.room.dto.response.RoomInviteResponse;
 import backend.drawrace.domain.room.dto.response.RoomUpdateResponse;
 import backend.drawrace.domain.room.entity.Participant;
 import backend.drawrace.domain.room.entity.Room;
@@ -34,8 +35,11 @@ import backend.drawrace.domain.room.repository.RoomRepository;
 import backend.drawrace.domain.round.repository.RoundParticipantRepository;
 import backend.drawrace.domain.round.repository.RoundRepository;
 import backend.drawrace.domain.round.repository.RoundSubmissionRepository;
+import backend.drawrace.domain.user.entity.Friendship;
+import backend.drawrace.domain.user.entity.FriendshipStatus;
 import backend.drawrace.domain.user.entity.User;
 import backend.drawrace.domain.user.entity.UserStats;
+import backend.drawrace.domain.user.repository.FriendshipRepository;
 import backend.drawrace.domain.user.repository.UserRepository;
 import backend.drawrace.global.exception.ServiceException;
 
@@ -50,6 +54,9 @@ class RoomServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private FriendshipRepository friendshipRepository;
 
     @Mock
     private RankingService rankingService;
@@ -713,6 +720,176 @@ class RoomServiceTest {
         assertThat(result.get(0).nickname()).isEqualTo("DB유저");
 
         verify(participantRepository).findByRoomId(roomId);
+    }
+
+    // ===== inviteFriend() =====
+
+    @Test
+    @DisplayName("친구 초대 성공 - WebSocket 알림이 전송된다")
+    void inviteFriend_success() throws Exception {
+        Long roomId = 1L;
+        Long inviterId = 1L;
+        Long friendId = 2L;
+
+        Room room = createRoom(roomId, "테스트방", inviterId);
+        User inviter = createUser(inviterId, "초대자");
+        User friend = createUser(friendId, "친구");
+        Friendship friendship = Friendship.builder()
+                .requester(inviter)
+                .receiver(friend)
+                .status(FriendshipStatus.ACCEPTED)
+                .build();
+
+        given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, inviterId))
+                .willReturn(true);
+        given(userRepository.findById(inviterId)).willReturn(Optional.of(inviter));
+        given(userRepository.findById(friendId)).willReturn(Optional.of(friend));
+        given(friendshipRepository.findByUsers(inviter, friend)).willReturn(Optional.of(friendship));
+        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, friendId))
+                .willReturn(false);
+
+        roomService.inviteFriend(roomId, inviterId, friendId);
+
+        verify(messagingTemplate)
+                .convertAndSend(eq("/sub/users/" + friendId + "/notifications"), any(RoomInviteResponse.class));
+    }
+
+    @Test
+    @DisplayName("친구 초대 실패 - 방 참여자가 아니면 예외가 발생한다")
+    void inviteFriend_fail_notParticipant() throws Exception {
+        Long roomId = 1L;
+        Long inviterId = 1L;
+        Long friendId = 2L;
+
+        Room room = createRoom(roomId, "테스트방", inviterId);
+
+        given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, inviterId))
+                .willReturn(false);
+
+        assertThatThrownBy(() -> roomService.inviteFriend(roomId, inviterId, friendId))
+                .isInstanceOf(ServiceException.class)
+                .hasFieldOrPropertyWithValue("resultCode", "403-2");
+    }
+
+    @Test
+    @DisplayName("친구 초대 실패 - 게임 중이면 예외가 발생한다")
+    void inviteFriend_fail_gamePlaying() throws Exception {
+        Long roomId = 1L;
+        Long inviterId = 1L;
+        Long friendId = 2L;
+
+        Room room = createRoom(roomId, "테스트방", inviterId);
+        setField(room, "isPlaying", true);
+
+        given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, inviterId))
+                .willReturn(true);
+
+        assertThatThrownBy(() -> roomService.inviteFriend(roomId, inviterId, friendId))
+                .isInstanceOf(ServiceException.class)
+                .hasFieldOrPropertyWithValue("resultCode", "400-2");
+    }
+
+    @Test
+    @DisplayName("친구 초대 실패 - 방 정원이 초과되면 예외가 발생한다")
+    void inviteFriend_fail_roomFull() throws Exception {
+        Long roomId = 1L;
+        Long inviterId = 1L;
+        Long friendId = 2L;
+
+        Room room = createRoom(roomId, "테스트방", inviterId);
+        setField(room, "curPlayers", (short) 4);
+
+        given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, inviterId))
+                .willReturn(true);
+
+        assertThatThrownBy(() -> roomService.inviteFriend(roomId, inviterId, friendId))
+                .isInstanceOf(ServiceException.class)
+                .hasFieldOrPropertyWithValue("resultCode", "400-3");
+    }
+
+    @Test
+    @DisplayName("친구 초대 실패 - 친구 관계가 아니면 예외가 발생한다")
+    void inviteFriend_fail_notFriend() throws Exception {
+        Long roomId = 1L;
+        Long inviterId = 1L;
+        Long friendId = 2L;
+
+        Room room = createRoom(roomId, "테스트방", inviterId);
+        User inviter = createUser(inviterId, "초대자");
+        User friend = createUser(friendId, "타인");
+
+        given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, inviterId))
+                .willReturn(true);
+        given(userRepository.findById(inviterId)).willReturn(Optional.of(inviter));
+        given(userRepository.findById(friendId)).willReturn(Optional.of(friend));
+        given(friendshipRepository.findByUsers(inviter, friend)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> roomService.inviteFriend(roomId, inviterId, friendId))
+                .isInstanceOf(ServiceException.class)
+                .hasFieldOrPropertyWithValue("resultCode", "403-3");
+    }
+
+    @Test
+    @DisplayName("친구 초대 실패 - PENDING 상태 친구는 초대할 수 없다")
+    void inviteFriend_fail_pendingFriendship() throws Exception {
+        Long roomId = 1L;
+        Long inviterId = 1L;
+        Long friendId = 2L;
+
+        Room room = createRoom(roomId, "테스트방", inviterId);
+        User inviter = createUser(inviterId, "초대자");
+        User friend = createUser(friendId, "대기중친구");
+        Friendship friendship = Friendship.builder()
+                .requester(inviter)
+                .receiver(friend)
+                .status(FriendshipStatus.PENDING)
+                .build();
+
+        given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, inviterId))
+                .willReturn(true);
+        given(userRepository.findById(inviterId)).willReturn(Optional.of(inviter));
+        given(userRepository.findById(friendId)).willReturn(Optional.of(friend));
+        given(friendshipRepository.findByUsers(inviter, friend)).willReturn(Optional.of(friendship));
+
+        assertThatThrownBy(() -> roomService.inviteFriend(roomId, inviterId, friendId))
+                .isInstanceOf(ServiceException.class)
+                .hasFieldOrPropertyWithValue("resultCode", "403-3");
+    }
+
+    @Test
+    @DisplayName("친구 초대 실패 - 이미 방에 참여 중인 친구는 초대할 수 없다")
+    void inviteFriend_fail_friendAlreadyInRoom() throws Exception {
+        Long roomId = 1L;
+        Long inviterId = 1L;
+        Long friendId = 2L;
+
+        Room room = createRoom(roomId, "테스트방", inviterId);
+        User inviter = createUser(inviterId, "초대자");
+        User friend = createUser(friendId, "이미참여중친구");
+        Friendship friendship = Friendship.builder()
+                .requester(inviter)
+                .receiver(friend)
+                .status(FriendshipStatus.ACCEPTED)
+                .build();
+
+        given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(eq(roomId), eq(inviterId)))
+                .willReturn(true);
+        given(userRepository.findById(inviterId)).willReturn(Optional.of(inviter));
+        given(userRepository.findById(friendId)).willReturn(Optional.of(friend));
+        given(friendshipRepository.findByUsers(inviter, friend)).willReturn(Optional.of(friendship));
+        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(eq(roomId), eq(friendId)))
+                .willReturn(true);
+
+        assertThatThrownBy(() -> roomService.inviteFriend(roomId, inviterId, friendId))
+                .isInstanceOf(ServiceException.class)
+                .hasFieldOrPropertyWithValue("resultCode", "400-6");
     }
 
     private Room createRoom(Long id, String title, Long hostId) throws Exception {

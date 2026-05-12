@@ -16,6 +16,7 @@ import backend.drawrace.domain.room.dto.request.CreateRoomReq;
 import backend.drawrace.domain.room.dto.response.GetRoomListRes;
 import backend.drawrace.domain.room.dto.response.RankingRes;
 import backend.drawrace.domain.room.dto.response.RoomInfoRes;
+import backend.drawrace.domain.room.dto.response.RoomInviteResponse;
 import backend.drawrace.domain.room.dto.response.RoomUpdateResponse;
 import backend.drawrace.domain.room.entity.Participant;
 import backend.drawrace.domain.room.entity.Room;
@@ -24,7 +25,10 @@ import backend.drawrace.domain.room.repository.RoomRepository;
 import backend.drawrace.domain.round.repository.RoundParticipantRepository;
 import backend.drawrace.domain.round.repository.RoundRepository;
 import backend.drawrace.domain.round.repository.RoundSubmissionRepository;
+import backend.drawrace.domain.user.entity.Friendship;
+import backend.drawrace.domain.user.entity.FriendshipStatus;
 import backend.drawrace.domain.user.entity.User;
+import backend.drawrace.domain.user.repository.FriendshipRepository;
 import backend.drawrace.domain.user.repository.UserRepository;
 import backend.drawrace.global.exception.ServiceException;
 
@@ -38,6 +42,7 @@ public class RoomService {
     private final RoomRepository roomRepository;
     private final ParticipantRepository participantRepository;
     private final UserRepository userRepository;
+    private final FriendshipRepository friendshipRepository;
     private final RankingService rankingService;
     private final SimpMessagingTemplate messagingTemplate;
     private final ObjectProvider<AiChatService> aiChatServiceProvider;
@@ -521,6 +526,43 @@ public class RoomService {
                 .build();
 
         messagingTemplate.convertAndSend("/sub/rooms/" + roomId + "/chat", hostNotice);
+    }
+
+    public void inviteFriend(Long roomId, Long inviterId, Long friendId) {
+        Room room = roomRepository.findById(roomId).orElseThrow(() -> new ServiceException("404-2", "방을 찾을 수 없습니다."));
+
+        if (!participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, inviterId)) {
+            throw new ServiceException("403-2", "방 참여자만 초대할 수 있습니다.");
+        }
+
+        if (room.isPlaying()) {
+            throw new ServiceException("400-2", "게임 중에는 초대할 수 없습니다.");
+        }
+
+        if (room.getCurPlayers() >= room.getMaxPlayers()) {
+            throw new ServiceException("400-3", "방 인원이 초과되었습니다.");
+        }
+
+        User inviter =
+                userRepository.findById(inviterId).orElseThrow(() -> new ServiceException("404-1", "유저를 찾을 수 없습니다."));
+        User friend =
+                userRepository.findById(friendId).orElseThrow(() -> new ServiceException("404-1", "유저를 찾을 수 없습니다."));
+
+        Friendship friendship = friendshipRepository
+                .findByUsers(inviter, friend)
+                .orElseThrow(() -> new ServiceException("403-3", "친구 관계가 아닙니다."));
+
+        if (friendship.getStatus() != FriendshipStatus.ACCEPTED) {
+            throw new ServiceException("403-3", "친구 관계가 아닙니다.");
+        }
+
+        if (participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, friendId)) {
+            throw new ServiceException("400-6", "이미 방에 참여 중인 친구입니다.");
+        }
+
+        messagingTemplate.convertAndSend(
+                "/sub/users/" + friendId + "/notifications",
+                new RoomInviteResponse(roomId, room.getTitle(), inviterId, inviter.getNickname()));
     }
 
     /*

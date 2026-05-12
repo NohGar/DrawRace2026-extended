@@ -49,25 +49,27 @@ public class StompHandler implements ChannelInterceptor {
 
         // 구독 시 권한 체크
         if (StompCommand.SUBSCRIBE.equals(accessor.getCommand())) {
-            String destination = accessor.getDestination(); // 예: /sub/rooms/10/chat
+            String destination = accessor.getDestination();
             Long roomId = extractRoomId(destination);
+            Long notificationUserId = extractNotificationUserId(destination);
+
+            Authentication authentication = (Authentication) accessor.getUser();
+            if (authentication == null) {
+                throw new ServiceException("401-1", "인증 정보가 없습니다.");
+            }
+            SecurityUser securityUser = (SecurityUser) authentication.getPrincipal();
 
             if (roomId != null) {
-                // 현재 인증된 유저 정보 가져오기
-                Authentication authentication = (Authentication) accessor.getUser();
-                if (authentication == null) {
-                    throw new ServiceException("401-1", "인증 정보가 없습니다.");
-                }
-
-                SecurityUser securityUser = (SecurityUser) authentication.getPrincipal();
-                Long userId = securityUser.getUserId();
-
-                // DB에서 해당 유저가 이 방의 참여자인지 확인
-                boolean isParticipant = participantRepository.existsByRoomIdAndUserId_Id(roomId, userId);
-
+                boolean isParticipant =
+                        participantRepository.existsByRoomIdAndUserId_Id(roomId, securityUser.getUserId());
                 if (!isParticipant) {
-                    log.warn("인가되지 않은 구독 시도: 유저 {}, 방 {}", userId, roomId);
+                    log.warn("인가되지 않은 구독 시도: 유저 {}, 방 {}", securityUser.getUserId(), roomId);
                     throw new ServiceException("403-1", "해당 방에 접근 권한이 없습니다.");
+                }
+            } else if (notificationUserId != null) {
+                if (!securityUser.getUserId().equals(notificationUserId)) {
+                    log.warn("인가되지 않은 알림 채널 구독 시도: 유저 {}, 채널 {}", securityUser.getUserId(), notificationUserId);
+                    throw new ServiceException("403-2", "본인의 알림 채널만 구독할 수 있습니다.");
                 }
             }
         }
@@ -77,14 +79,21 @@ public class StompHandler implements ChannelInterceptor {
     private Long extractRoomId(String destination) {
         try {
             if (destination == null || !destination.startsWith("/sub/rooms/")) return null;
-
-            // /sub/rooms/{roomId} 형식에서 숫자 추출
             String[] parts = destination.split("/");
-            if (parts.length >= 4) {
-                return Long.parseLong(parts[3]);
-            }
+            if (parts.length >= 4) return Long.parseLong(parts[3]);
         } catch (Exception e) {
             log.error("roomId 추출 실패: {}", destination);
+        }
+        return null;
+    }
+
+    private Long extractNotificationUserId(String destination) {
+        try {
+            if (destination == null || !destination.startsWith("/sub/users/")) return null;
+            String[] parts = destination.split("/");
+            if (parts.length >= 4) return Long.parseLong(parts[3]);
+        } catch (Exception e) {
+            log.error("userId 추출 실패: {}", destination);
         }
         return null;
     }
