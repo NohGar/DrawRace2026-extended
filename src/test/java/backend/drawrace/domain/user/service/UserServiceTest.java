@@ -30,6 +30,9 @@ class UserServiceTest {
     @MockBean
     GuestNicknameGenerator nicknameGenerator;
 
+    @MockBean
+    NicknamePoolService nicknamePoolService;
+
     private Long createTestUser() {
         return authService.signup(new CreateUserRequest("test@example.com", "password123", "테스터"));
     }
