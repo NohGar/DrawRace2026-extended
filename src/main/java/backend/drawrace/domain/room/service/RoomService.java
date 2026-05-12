@@ -16,6 +16,7 @@ import backend.drawrace.domain.room.dto.request.CreateRoomReq;
 import backend.drawrace.domain.room.dto.response.GetRoomListRes;
 import backend.drawrace.domain.room.dto.response.RankingRes;
 import backend.drawrace.domain.room.dto.response.RoomInfoRes;
+import backend.drawrace.domain.room.dto.response.RoomInviteResponse;
 import backend.drawrace.domain.room.dto.response.RoomUpdateResponse;
 import backend.drawrace.domain.room.entity.Participant;
 import backend.drawrace.domain.room.entity.Room;
@@ -24,7 +25,6 @@ import backend.drawrace.domain.room.repository.RoomRepository;
 import backend.drawrace.domain.round.repository.RoundParticipantRepository;
 import backend.drawrace.domain.round.repository.RoundRepository;
 import backend.drawrace.domain.round.repository.RoundSubmissionRepository;
-import backend.drawrace.domain.room.dto.response.RoomInviteResponse;
 import backend.drawrace.domain.user.entity.Friendship;
 import backend.drawrace.domain.user.entity.FriendshipStatus;
 import backend.drawrace.domain.user.entity.User;
@@ -543,10 +543,13 @@ public class RoomService {
             throw new ServiceException("400-3", "방 인원이 초과되었습니다.");
         }
 
-        User inviter = userRepository.findById(inviterId).orElseThrow(() -> new ServiceException("404-1", "유저를 찾을 수 없습니다."));
-        User friend = userRepository.findById(friendId).orElseThrow(() -> new ServiceException("404-1", "유저를 찾을 수 없습니다."));
+        User inviter =
+                userRepository.findById(inviterId).orElseThrow(() -> new ServiceException("404-1", "유저를 찾을 수 없습니다."));
+        User friend =
+                userRepository.findById(friendId).orElseThrow(() -> new ServiceException("404-1", "유저를 찾을 수 없습니다."));
 
-        Friendship friendship = friendshipRepository.findByUsers(inviter, friend)
+        Friendship friendship = friendshipRepository
+                .findByUsers(inviter, friend)
                 .orElseThrow(() -> new ServiceException("403-3", "친구 관계가 아닙니다."));
 
         if (friendship.getStatus() != FriendshipStatus.ACCEPTED) {

@@ -60,7 +60,8 @@ public class StompHandler implements ChannelInterceptor {
             SecurityUser securityUser = (SecurityUser) authentication.getPrincipal();
 
             if (roomId != null) {
-                boolean isParticipant = participantRepository.existsByRoomIdAndUserId_Id(roomId, securityUser.getUserId());
+                boolean isParticipant =
+                        participantRepository.existsByRoomIdAndUserId_Id(roomId, securityUser.getUserId());
                 if (!isParticipant) {
                     log.warn("인가되지 않은 구독 시도: 유저 {}, 방 {}", securityUser.getUserId(), roomId);
                     throw new ServiceException("403-1", "해당 방에 접근 권한이 없습니다.");

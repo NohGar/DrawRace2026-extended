@@ -735,20 +735,24 @@ class RoomServiceTest {
         User inviter = createUser(inviterId, "초대자");
         User friend = createUser(friendId, "친구");
         Friendship friendship = Friendship.builder()
-                .requester(inviter).receiver(friend).status(FriendshipStatus.ACCEPTED).build();
+                .requester(inviter)
+                .receiver(friend)
+                .status(FriendshipStatus.ACCEPTED)
+                .build();
 
         given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
-        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, inviterId)).willReturn(true);
+        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, inviterId))
+                .willReturn(true);
         given(userRepository.findById(inviterId)).willReturn(Optional.of(inviter));
         given(userRepository.findById(friendId)).willReturn(Optional.of(friend));
         given(friendshipRepository.findByUsers(inviter, friend)).willReturn(Optional.of(friendship));
-        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, friendId)).willReturn(false);
+        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, friendId))
+                .willReturn(false);
 
         roomService.inviteFriend(roomId, inviterId, friendId);
 
-        verify(messagingTemplate).convertAndSend(
-                eq("/sub/users/" + friendId + "/notifications"),
-                any(RoomInviteResponse.class));
+        verify(messagingTemplate)
+                .convertAndSend(eq("/sub/users/" + friendId + "/notifications"), any(RoomInviteResponse.class));
     }
 
     @Test
@@ -761,7 +765,8 @@ class RoomServiceTest {
         Room room = createRoom(roomId, "테스트방", inviterId);
 
         given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
-        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, inviterId)).willReturn(false);
+        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, inviterId))
+                .willReturn(false);
 
         assertThatThrownBy(() -> roomService.inviteFriend(roomId, inviterId, friendId))
                 .isInstanceOf(ServiceException.class)
@@ -779,7 +784,8 @@ class RoomServiceTest {
         setField(room, "isPlaying", true);
 
         given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
-        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, inviterId)).willReturn(true);
+        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, inviterId))
+                .willReturn(true);
 
         assertThatThrownBy(() -> roomService.inviteFriend(roomId, inviterId, friendId))
                 .isInstanceOf(ServiceException.class)
@@ -797,7 +803,8 @@ class RoomServiceTest {
         setField(room, "curPlayers", (short) 4);
 
         given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
-        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, inviterId)).willReturn(true);
+        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, inviterId))
+                .willReturn(true);
 
         assertThatThrownBy(() -> roomService.inviteFriend(roomId, inviterId, friendId))
                 .isInstanceOf(ServiceException.class)
@@ -816,7 +823,8 @@ class RoomServiceTest {
         User friend = createUser(friendId, "타인");
 
         given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
-        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, inviterId)).willReturn(true);
+        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, inviterId))
+                .willReturn(true);
         given(userRepository.findById(inviterId)).willReturn(Optional.of(inviter));
         given(userRepository.findById(friendId)).willReturn(Optional.of(friend));
         given(friendshipRepository.findByUsers(inviter, friend)).willReturn(Optional.empty());
@@ -837,10 +845,14 @@ class RoomServiceTest {
         User inviter = createUser(inviterId, "초대자");
         User friend = createUser(friendId, "대기중친구");
         Friendship friendship = Friendship.builder()
-                .requester(inviter).receiver(friend).status(FriendshipStatus.PENDING).build();
+                .requester(inviter)
+                .receiver(friend)
+                .status(FriendshipStatus.PENDING)
+                .build();
 
         given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
-        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, inviterId)).willReturn(true);
+        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(roomId, inviterId))
+                .willReturn(true);
         given(userRepository.findById(inviterId)).willReturn(Optional.of(inviter));
         given(userRepository.findById(friendId)).willReturn(Optional.of(friend));
         given(friendshipRepository.findByUsers(inviter, friend)).willReturn(Optional.of(friendship));
@@ -861,14 +873,19 @@ class RoomServiceTest {
         User inviter = createUser(inviterId, "초대자");
         User friend = createUser(friendId, "이미참여중친구");
         Friendship friendship = Friendship.builder()
-                .requester(inviter).receiver(friend).status(FriendshipStatus.ACCEPTED).build();
+                .requester(inviter)
+                .receiver(friend)
+                .status(FriendshipStatus.ACCEPTED)
+                .build();
 
         given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
-        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(eq(roomId), eq(inviterId))).willReturn(true);
+        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(eq(roomId), eq(inviterId)))
+                .willReturn(true);
         given(userRepository.findById(inviterId)).willReturn(Optional.of(inviter));
         given(userRepository.findById(friendId)).willReturn(Optional.of(friend));
         given(friendshipRepository.findByUsers(inviter, friend)).willReturn(Optional.of(friendship));
-        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(eq(roomId), eq(friendId))).willReturn(true);
+        given(participantRepository.existsByRoomIdAndUserId_IdAndIsLeftFalse(eq(roomId), eq(friendId)))
+                .willReturn(true);
 
         assertThatThrownBy(() -> roomService.inviteFriend(roomId, inviterId, friendId))
                 .isInstanceOf(ServiceException.class)
