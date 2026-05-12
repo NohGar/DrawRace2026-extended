@@ -78,14 +78,21 @@ public class StompHandler implements ChannelInterceptor {
     private Long extractRoomId(String destination) {
         try {
             if (destination == null || !destination.startsWith("/sub/rooms/")) return null;
-
-            // /sub/rooms/{roomId} 형식에서 숫자 추출
             String[] parts = destination.split("/");
-            if (parts.length >= 4) {
-                return Long.parseLong(parts[3]);
-            }
+            if (parts.length >= 4) return Long.parseLong(parts[3]);
         } catch (Exception e) {
             log.error("roomId 추출 실패: {}", destination);
+        }
+        return null;
+    }
+
+    private Long extractNotificationUserId(String destination) {
+        try {
+            if (destination == null || !destination.startsWith("/sub/users/")) return null;
+            String[] parts = destination.split("/");
+            if (parts.length >= 4) return Long.parseLong(parts[3]);
+        } catch (Exception e) {
+            log.error("userId 추출 실패: {}", destination);
         }
         return null;
     }
