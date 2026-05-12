@@ -24,7 +24,8 @@ public class NicknamePoolService {
 
     @Transactional
     public String pop() {
-        return nicknamePoolRepository.findFirstBy()
+        return nicknamePoolRepository
+                .findFirstBy()
                 .map(entry -> {
                     nicknamePoolRepository.delete(entry);
                     return entry.getNickname();
@@ -35,7 +36,7 @@ public class NicknamePoolService {
     @Transactional
     public void refill() {
         long current = nicknamePoolRepository.count();
-        int needed = (int)(POOL_SIZE - current);
+        int needed = (int) (POOL_SIZE - current);
         if (needed <= 0) return;
 
         log.info("[NicknamePool] 현재 {}개, {}개 보충 시작", current, needed);
@@ -49,9 +50,9 @@ public class NicknamePoolService {
     private boolean tryAddOne() {
         for (int retry = 0; retry < MAX_RETRIES; retry++) {
             String nickname = nicknameGenerator.generate();
-            if (!nicknamePoolRepository.existsByNickname(nickname)
-                    && !userRepository.existsByNickname(nickname)) {
-                nicknamePoolRepository.save(NicknamePool.builder().nickname(nickname).build());
+            if (!nicknamePoolRepository.existsByNickname(nickname) && !userRepository.existsByNickname(nickname)) {
+                nicknamePoolRepository.save(
+                        NicknamePool.builder().nickname(nickname).build());
                 return true;
             }
         }
