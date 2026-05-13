@@ -97,6 +97,7 @@ class RoundServiceWebSocketTest {
         lenient().when(round.getRoundNumber()).thenReturn(1);
         lenient().when(round.getKeyword()).thenReturn("강아지");
         lenient().when(roundRepository.findById(roundId)).thenReturn(Optional.of(round));
+        lenient().when(roundRepository.findByIdForUpdate(roundId)).thenReturn(Optional.of(round));
 
         Participant participant = mock(Participant.class);
         lenient().when(participant.getId()).thenReturn(participantId);
@@ -157,6 +158,7 @@ class RoundServiceWebSocketTest {
         lenient().when(round.getRoundNumber()).thenReturn(1);
         lenient().when(round.getKeyword()).thenReturn("사과");
         lenient().when(roundRepository.findById(roundId)).thenReturn(Optional.of(round));
+        lenient().when(roundRepository.findByIdForUpdate(roundId)).thenReturn(Optional.of(round));
 
         Participant participant = mock(Participant.class);
         lenient().when(participant.getId()).thenReturn(participantId);
