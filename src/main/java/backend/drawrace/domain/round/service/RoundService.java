@@ -206,8 +206,8 @@ public class RoundService {
             roundValidator.validateParticipantOwner(lockedParticipant, userId);
         }
 
-        boolean canPlayLocked =
-                roundParticipantRepository.existsByRoundIdAndParticipantId(lockedRound.getId(), lockedParticipant.getId());
+        boolean canPlayLocked = roundParticipantRepository.existsByRoundIdAndParticipantId(
+                lockedRound.getId(), lockedParticipant.getId());
         roundValidator.validateRoundParticipant(canPlayLocked);
 
         boolean alreadySubmittedLocked = roundSubmissionRepository.existsByRoundIdAndParticipantId(
@@ -240,7 +240,8 @@ public class RoundService {
         }
 
         // 전원 제출 완료 시 라운드 종료 처리
-        SubmitDrawingResponse response = handleRoundCompletion(lockedRound, aiResult, submittedCount, totalParticipantCount);
+        SubmitDrawingResponse response =
+                handleRoundCompletion(lockedRound, aiResult, submittedCount, totalParticipantCount);
 
         if (response.isRoundFinished()) {
             Long roomId = lockedRound.getRoom().getId();
