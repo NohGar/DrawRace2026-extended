@@ -4,9 +4,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 import jakarta.annotation.PostConstruct;
 
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -30,6 +32,7 @@ public class ChatModerationService {
     private final RestClient restClient;
     private final SimpMessagingTemplate messagingTemplate;
     private final EmbeddingService embeddingService;
+    private final StringRedisTemplate redisTemplate;
 
     private final Map<Long, LastChatInfo> chatHistory = new ConcurrentHashMap<>();
     private final List<float[]> aggressiveVectors = new ArrayList<>();
@@ -58,6 +61,12 @@ public class ChatModerationService {
     }
 
     public String fastFilter(Long userId, String originalMessage) {
+
+        // 차단 여부 확인
+        if (isUserBanned(userId)) {
+            throw new ServiceException("403-3", "부적절한 언어 사용으로 인해 3일간 채팅이 금지되었습니다.");
+        }
+
         // 도배 체크
         checkSpam(userId, originalMessage);
 
@@ -68,6 +77,11 @@ public class ChatModerationService {
         // 키워드 기반 즉시 차단
         if (originalMessage.matches(BANNED_PATTERN)) {
             return "****"; // 욕설 발견 시 즉시 마스킹
+        }
+
+        // 짧은 문장은 임베딩 검사 패스
+        if (originalMessage.length() < 3) {
+            return originalMessage;
         }
 
         // 임베딩 유사도 체크
@@ -86,7 +100,7 @@ public class ChatModerationService {
     }
 
     @Async("taskExecutor")
-    public void processAiModeration(Long roomId, ChatMessageDto chatMessage) {
+    public void processAiModeration(Long userId, Long roomId, ChatMessageDto chatMessage) {
         try {
 
             String aiResult = getAiDecisionStrict(chatMessage.getMessage());
@@ -95,10 +109,33 @@ public class ChatModerationService {
                 // 부적절하다고 판단되면 메시지를 교체하고 다시 브로드캐스트
                 chatMessage.setMessage("[AI 검열에 의해 삭제된 메시지입니다]");
                 messagingTemplate.convertAndSend("/sub/rooms/" + roomId + "/chat", chatMessage);
+
+                applyStrikeAndCheckBan(userId);
+
                 log.info("AI가 부적절한 메시지 감지 및 수정 완료: {}", chatMessage.getMessage());
             }
         } catch (Exception e) {
             log.error("비동기 AI 검열 중 오류 발생: {}", e.getMessage());
+        }
+    }
+
+    private void applyStrikeAndCheckBan(Long userId) {
+        String strikeKey = "strike:user:" + userId;
+        String banKey = "ban:user:" + userId;
+
+        // 스트라이크 1 증가
+        Long currentStrikes = redisTemplate.opsForValue().increment(strikeKey);
+
+        // 첫 적발 시 24시간 후 스트라이크 초기화 설정
+        if (currentStrikes != null && currentStrikes == 1) {
+            redisTemplate.expire(strikeKey, 24, TimeUnit.HOURS);
+        }
+
+        // 3회 적발 시 3일간 차단
+        if (currentStrikes != null && currentStrikes >= 3) {
+            redisTemplate.opsForValue().set(banKey, "BANNED", 3, TimeUnit.DAYS);
+            redisTemplate.delete(strikeKey); // 차단됐으니 스트라이크는 삭제
+            log.info("유저 {}님 3회 적발로 3일간 채팅 금지", userId);
         }
     }
 
@@ -140,13 +177,36 @@ public class ChatModerationService {
 
         if (last != null) {
             if (now - last.timestamp < SPAM_LIMIT_MS) throw new ServiceException("429-1", "채팅이 너무 빠릅니다.");
-            if (last.message.equals(message)) throw new ServiceException("429-2", "동일한 내용의 채팅입니다.");
+            if (last.message.equals(message)) {
+                last.repeatCount++;
+                if (last.repeatCount > 10) {
+                    throw new ServiceException("429-2", "동일한 내용의 채팅입니다.");
+                }
+            } else {
+                last.repeatCount = 1;
+            }
+            last.timestamp = now;
+            last.message = message;
+        } else {
+            chatHistory.put(userId, new LastChatInfo(message, now, 1));
         }
-        chatHistory.put(userId, new LastChatInfo(message, now));
     }
 
-    private record LastChatInfo(String message, long timestamp) {}
+    private boolean isUserBanned(Long userId) {
+        return Boolean.TRUE.equals(redisTemplate.hasKey("ban:user:" + userId));
+    }
 
+    private static class LastChatInfo {
+        String message;
+        long timestamp;
+        int repeatCount;
+
+        LastChatInfo(String message, long timestamp, int repeatCount) {
+            this.message = message;
+            this.timestamp = timestamp;
+            this.repeatCount = repeatCount;
+        }
+    }
     /*
     private final Map<Long, LastChatInfo> chatHistory = new ConcurrentHashMap<>();
     private static final int SPAM_LIMIT_MS = 1000;
