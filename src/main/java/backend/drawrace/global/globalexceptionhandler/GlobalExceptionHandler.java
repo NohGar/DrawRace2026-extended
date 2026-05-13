@@ -19,6 +19,9 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 import backend.drawrace.global.exception.ServiceException;
 import backend.drawrace.global.rsdata.RsData;
 
+import lombok.extern.slf4j.Slf4j;
+
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -69,6 +72,7 @@ public class GlobalExceptionHandler {
     // 그 외 예상치 못한 서버 에러 (500)
     @ExceptionHandler(Exception.class)
     public ResponseEntity<RsData<Void>> handle(Exception exception) {
+        log.error("Unexpected server error", exception);
         return ResponseEntity.status(INTERNAL_SERVER_ERROR).body(new RsData<>("500-1", "예상치 못한 서버 오류가 발생했습니다."));
     }
 }
