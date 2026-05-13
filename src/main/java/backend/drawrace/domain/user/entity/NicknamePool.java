@@ -14,7 +14,6 @@ import lombok.NoArgsConstructor;
 @Table(name = "nickname_pool")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class NicknamePool extends BaseEntity {
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
