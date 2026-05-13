@@ -22,6 +22,8 @@ public class SubmitDrawingResponse {
 
     private Long roundWinnerParticipantId;
 
+    private int timeLimit; // 타이머
+
     // 라운드 승자의 AI 판별 결과
     private String roundWinnerAiAnswer;
     private Double roundWinnerScore;
