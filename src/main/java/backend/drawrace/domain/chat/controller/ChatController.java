@@ -29,6 +29,10 @@ public class ChatController {
     public void sendChatMessage(
             @DestinationVariable Long roomId, ChatMessageDto chatMessage, Authentication authentication) {
 
+        // 메시지마다 고유 ID 생성
+        String messageId = java.util.UUID.randomUUID().toString();
+        chatMessage.setMessageId(messageId);
+
         // 빈 메시지나 공백만 있는 메시지
         if (chatMessage.getMessage() == null || chatMessage.getMessage().trim().isEmpty()) {
             return; // 아무것도 하지 않고 종료
@@ -42,10 +46,6 @@ public class ChatController {
         User user = userRepository
                 .findById(securityUser.getUserId())
                 .orElseThrow(() -> new ServiceException("404-1", "유저를 찾을 수 없습니다."));
-
-        // 메시지마다 고유 ID 생성
-        String messageId = java.util.UUID.randomUUID().toString();
-        chatMessage.setMessageId(messageId);
 
         // AI 검열 실행
         String filteredMessage = chatModerationService.fastFilter(securityUser.getUserId(), chatMessage.getMessage());
