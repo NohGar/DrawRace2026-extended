@@ -62,7 +62,7 @@ public class RoundService {
     private final ObjectProvider<AiSubmissionService> aiSubmissionServiceProvider;
     private final ObjectProvider<AiChatService> aiChatServiceProvider;
     private final TaskScheduler taskScheduler;
-    private static final int ROUND_TIME_LIMIT = 60;
+    private static final int ROUND_TIME_LIMIT = 90;
     private final RoomService roomService;
     private final RankingService rankingService;
 
@@ -135,10 +135,51 @@ public class RoundService {
         // 구독 경로: /sub/rooms/{roomId}
         messagingTemplate.convertAndSend(
                 "/sub/rooms/" + round.getRoom().getId(),
-                GameEvent.builder()
-                        .type("TIME_OVER") // 이벤트 타입 정의[cite: 12]
-                        .data(roundId)
-                        .build());
+                GameEvent.builder().type("TIME_OVER").data(roundId).build());
+
+        taskScheduler.schedule(() -> forceFinishRound(roundId), Instant.now().plusSeconds(5));
+    }
+
+    @Transactional
+    public synchronized void forceFinishRound(Long roundId) {
+        Round round = roundRepository.findById(roundId).orElse(null);
+        // 이미 모두 제출해서 종료되었거나 라운드가 없으면 무시
+        if (round == null || round.getStatus() != RoundStatus.IN_PROGRESS) return;
+
+        log.info("⏰ 5초 대기 종료. 미제출자 강제 0점 처리 시작: roundId={}", roundId);
+
+        // 이번 라운드에 참여한 모든 참가자 목록
+        List<RoundParticipant> rpList = roundParticipantRepository.findActiveByRoundId(round.getId());
+
+        // 이미 제출한 사람들의 참가자 ID 목록
+        List<Long> submittedParticipantIds = roundSubmissionRepository.findByRoundId(round.getId()).stream()
+                .map(s -> s.getParticipant().getId())
+                .toList();
+
+        for (RoundParticipant rp : rpList) {
+            Participant participant = rp.getParticipant(); // 👈 RoundParticipant에서 Participant 추출
+
+            // 제출 안 했고, 방을 나가지 않은 유저만 강제 제출 처리
+            if (!submittedParticipantIds.contains(participant.getId()) && !participant.isLeft()) {
+                // 🚀 RoundSubmission.create 파라미터 순서 및 타입 수정
+                // 순서: Round, Participant, imageData, aiAnswer, score
+                RoundSubmission fallback = RoundSubmission.create(
+                        round, participant, "{}", "TIMEOUT", 0.0 // 점수는 0점
+                        );
+                roundSubmissionRepository.save(fallback);
+            }
+        }
+
+        long count = roundSubmissionRepository.countActiveByRoundId(round.getId());
+
+        AiInferenceResponse dummyResult = new AiInferenceResponse(round.getKeyword(), 0.0);
+
+        SubmitDrawingResponse response = handleRoundCompletion(round, dummyResult, count, count);
+
+        // 결과 브로드캐스트
+        if (response.isRoundFinished()) {
+            messagingTemplate.convertAndSend("/sub/rooms/" + round.getRoom().getId(), response);
+        }
     }
 
     /**
