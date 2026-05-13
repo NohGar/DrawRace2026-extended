@@ -21,6 +21,9 @@ public class GatewayChatRequest {
     @JsonProperty("max_tokens")
     private Integer maxTokens;
 
+    @Builder.Default
+    private boolean stream = false;
+
     @Getter
     @Builder
     public static class Message {
