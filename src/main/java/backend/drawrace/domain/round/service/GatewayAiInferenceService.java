@@ -182,6 +182,7 @@ public class GatewayAiInferenceService implements AiInferenceService {
         try {
             return objectMapper.readValue(content, GatewayInferenceResult.class);
         } catch (JsonProcessingException e) {
+            log.error("파싱 실패! AI가 보낸 원본 내용: {}", content);
             throw new ServiceException("500-1", "AI 응답 파싱에 실패했습니다.");
         }
     }
