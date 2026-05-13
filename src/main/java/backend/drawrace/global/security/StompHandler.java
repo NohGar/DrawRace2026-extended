@@ -1,5 +1,8 @@
 package backend.drawrace.global.security;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
@@ -19,6 +22,9 @@ import lombok.extern.slf4j.Slf4j;
 @Component
 @RequiredArgsConstructor
 public class StompHandler implements ChannelInterceptor {
+
+    private static final long LOG_SUPPRESS_MS = 60_000L;
+    private final Map<Integer, Long> recentAuthFailures = new ConcurrentHashMap<>();
 
     private final JwtTokenProvider jwtTokenProvider;
     private final ParticipantRepository participantRepository;
@@ -42,7 +48,13 @@ public class StompHandler implements ChannelInterceptor {
                 Authentication authentication = jwtTokenProvider.getAuthentication(token);
                 accessor.setUser(authentication);
             } else {
-                log.error("웹소켓 인증 실패: 유효하지 않은 토큰");
+                long now = System.currentTimeMillis();
+                int tokenHash = token != null ? token.hashCode() : 0;
+                Long lastLogged = recentAuthFailures.get(tokenHash);
+                if (lastLogged == null || now - lastLogged > LOG_SUPPRESS_MS) {
+                    log.warn("웹소켓 인증 실패: 유효하지 않은 토큰");
+                    recentAuthFailures.put(tokenHash, now);
+                }
                 throw new RuntimeException("인증 정보가 유효하지 않습니다.");
             }
         }
