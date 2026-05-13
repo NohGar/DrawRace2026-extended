@@ -135,13 +135,9 @@ public class RoundService {
         // 구독 경로: /sub/rooms/{roomId}
         messagingTemplate.convertAndSend(
                 "/sub/rooms/" + round.getRoom().getId(),
-                GameEvent.builder()
-                        .type("TIME_OVER")
-                        .data(roundId)
-                        .build());
+                GameEvent.builder().type("TIME_OVER").data(roundId).build());
 
-        taskScheduler.schedule(() -> forceFinishRound(roundId),
-                Instant.now().plusSeconds(5));
+        taskScheduler.schedule(() -> forceFinishRound(roundId), Instant.now().plusSeconds(5));
     }
 
     @Transactional
@@ -156,8 +152,7 @@ public class RoundService {
         List<RoundParticipant> rpList = roundParticipantRepository.findActiveByRoundId(round.getId());
 
         // 이미 제출한 사람들의 참가자 ID 목록
-        List<Long> submittedParticipantIds = roundSubmissionRepository.findByRoundId(round.getId())
-                .stream()
+        List<Long> submittedParticipantIds = roundSubmissionRepository.findByRoundId(round.getId()).stream()
                 .map(s -> s.getParticipant().getId())
                 .toList();
 
@@ -169,12 +164,8 @@ public class RoundService {
                 // 🚀 RoundSubmission.create 파라미터 순서 및 타입 수정
                 // 순서: Round, Participant, imageData, aiAnswer, score
                 RoundSubmission fallback = RoundSubmission.create(
-                        round,
-                        participant,
-                        "{}",
-                        "TIMEOUT",
-                        0.0         // 점수는 0점
-                );
+                        round, participant, "{}", "TIMEOUT", 0.0 // 점수는 0점
+                        );
                 roundSubmissionRepository.save(fallback);
             }
         }
