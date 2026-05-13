@@ -45,6 +45,11 @@ jwt:
 
 ai:
   mode: quickdraw
+  inference:
+    # 게이트웨이 동시 호출 상한 (방 최대 인원과 맞추는 것을 권장)
+    max-concurrent: 4
+    # 세마포어 획득 대기 초. 0이면 무제한 대기(큐에 쌓임)
+    acquire-timeout-seconds: 120
   gateway:
     base-url: ${AI_GATEWAY_BASE_URL:}
     api-key: ${AI_GATEWAY_API_KEY:}
