@@ -170,6 +170,9 @@ public class RoundService {
             }
         }
 
+        round.finish();
+        roundSubmissionRepository.flush();
+
         long count = roundSubmissionRepository.countActiveByRoundId(round.getId());
 
         AiInferenceResponse dummyResult = new AiInferenceResponse(round.getKeyword(), 0.0);
@@ -217,6 +220,40 @@ public class RoundService {
                 roundSubmissionRepository.existsByRoundIdAndParticipantId(round.getId(), participant.getId());
         roundValidator.validateNotSubmitted(alreadySubmitted);
 
+        AiInferenceResponse aiResult;
+        try {
+            if (participant.getUserId().isAi()) {
+                double score = 0.70 + ThreadLocalRandom.current().nextDouble(0.15);
+                aiResult = new AiInferenceResponse(round.getKeyword(), score);
+            } else {
+                aiResult = aiInferenceService.infer(request.getImageData(), round.getKeyword());
+            }
+        } catch (Exception e) {
+            aiResult = new AiInferenceResponse("ERROR", 0.0);
+        }
+
+        Round lockedRound = roundRepository
+                .findByIdForUpdate(roundId)
+                .orElseThrow(() -> new ServiceException("404-2", "존재하지 않는 라운드입니다."));
+
+        if (lockedRound.getStatus() == RoundStatus.FINISHED) {
+            log.info("AI 추론 중 타임아웃 발생. 이 결과는 무시합니다. userId={}", userId);
+            return SubmitDrawingResponse.builder().roundFinished(true).build();
+        }
+
+        roundValidator.validateRoundInProgress(lockedRound);
+
+        /*
+        // 이번 라운드 제출 대상인지 확인
+        boolean canPlay =
+                roundParticipantRepository.existsByRoundIdAndParticipantId(round.getId(), participant.getId());
+        roundValidator.validateRoundParticipant(canPlay);
+
+        // 이미 제출했는지 확인
+        boolean alreadySubmitted =
+                roundSubmissionRepository.existsByRoundIdAndParticipantId(round.getId(), participant.getId());
+        roundValidator.validateNotSubmitted(alreadySubmitted);
+
         // AI는 스트로크 데이터를 비전 모델로 판독할 수 없으므로 점수를 고정한다 (0.70~0.85)
         // 인간이 잘 그리면 AI를 이길 수 있는 수준으로 설정
         AiInferenceResponse aiResult;
@@ -227,16 +264,19 @@ public class RoundService {
             aiResult = aiInferenceService.infer(request.getImageData(), round.getKeyword());
         }
 
+
+
         /*
          * 동시 제출: infer는 네트워크 I/O로 길어 락 밖에서 수행하고,
          * 저장·count·라운드 종료 판정 전에 라운드 행에 배타 락을 걸어 submittedCount 레이스를 방지한다.
          */
+        /*
         Round lockedRound = roundRepository
                 .findByIdForUpdate(roundId)
                 .orElseThrow(() -> new ServiceException("404-2", "존재하지 않는 라운드입니다."));
 
         roundValidator.validateRoundInProgress(lockedRound);
-
+         */
         Participant lockedParticipant = getValidParticipant(lockedRound, request.getParticipantId());
 
         if (lockedParticipant.isLeft()) {
@@ -274,6 +314,7 @@ public class RoundService {
                     .submittedScore(aiResult.getScore())
                     .submittedCount((int) submittedCount)
                     .totalParticipantCount((int) totalParticipantCount)
+                    .timeLimit(ROUND_TIME_LIMIT)
                     .roundFinished(false)
                     .gameFinished(false)
                     .tieBreakerStarted(false)
@@ -429,6 +470,7 @@ public class RoundService {
                     .roundWinnerAiAnswer(winnerSubmission.getAiAnswer())
                     .roundWinnerScore(winnerSubmission.getScore())
                     .finalWinnerParticipantId(roundWinner.getId())
+                    .timeLimit(ROUND_TIME_LIMIT)
                     .build();
         }
 
@@ -446,6 +488,7 @@ public class RoundService {
 
             return SubmitDrawingResponse.builder()
                     .roundId(round.getId())
+                    .timeLimit(ROUND_TIME_LIMIT)
                     .submittedAiAnswer(submittedAiResult.getAiAnswer())
                     .submittedScore(submittedAiResult.getScore())
                     .submittedCount((int) submittedCount)
@@ -495,6 +538,7 @@ public class RoundService {
 
             return SubmitDrawingResponse.builder()
                     .roundId(round.getId())
+                    .timeLimit(ROUND_TIME_LIMIT)
                     .submittedAiAnswer(submittedAiResult.getAiAnswer())
                     .submittedScore(submittedAiResult.getScore())
                     .submittedCount((int) submittedCount)
@@ -518,6 +562,7 @@ public class RoundService {
 
         return SubmitDrawingResponse.builder()
                 .roundId(round.getId())
+                .timeLimit(ROUND_TIME_LIMIT)
                 .submittedAiAnswer(submittedAiResult.getAiAnswer())
                 .submittedScore(submittedAiResult.getScore())
                 .submittedCount((int) submittedCount)
