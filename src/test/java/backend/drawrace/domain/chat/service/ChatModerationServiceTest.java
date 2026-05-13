@@ -141,7 +141,7 @@ class ChatModerationServiceTest {
 
         chatModerationService.initAggressiveVectors();
 
-        when(embeddingService.calculateSimilarity(any(), any())).thenReturn(0.9);
+        when(embeddingService.calculateSimilarity(any(), any())).thenReturn(0.95);
 
         String result = chatModerationService.fastFilter(1L, input);
 

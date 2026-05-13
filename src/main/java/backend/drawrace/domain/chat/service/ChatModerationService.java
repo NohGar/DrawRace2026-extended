@@ -39,7 +39,7 @@ public class ChatModerationService {
 
     private static final int SPAM_LIMIT_MS = 1000;
     private static final String BANNED_PATTERN = ".*(시발|병신|개새끼|패드립|느금).*";
-    private static final double SIMILARITY_THRESHOLD = 0.82;
+    private static final double SIMILARITY_THRESHOLD = 0.90;
 
     @PostConstruct
     public void initAggressiveVectors() {

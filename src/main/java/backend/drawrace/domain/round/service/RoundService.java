@@ -142,7 +142,7 @@ public class RoundService {
 
     @Transactional
     public synchronized void forceFinishRound(Long roundId) {
-        Round round = roundRepository.findById(roundId).orElse(null);
+        Round round = roundRepository.findByIdForUpdate(roundId).orElse(null);
         // 이미 모두 제출해서 종료되었거나 라운드가 없으면 무시
         if (round == null || round.getStatus() != RoundStatus.IN_PROGRESS) return;
 
@@ -157,12 +157,11 @@ public class RoundService {
                 .toList();
 
         for (RoundParticipant rp : rpList) {
-            Participant participant = rp.getParticipant(); // 👈 RoundParticipant에서 Participant 추출
+            Participant participant = rp.getParticipant();
 
             // 제출 안 했고, 방을 나가지 않은 유저만 강제 제출 처리
             if (!submittedParticipantIds.contains(participant.getId()) && !participant.isLeft()) {
-                // 🚀 RoundSubmission.create 파라미터 순서 및 타입 수정
-                // 순서: Round, Participant, imageData, aiAnswer, score
+
                 RoundSubmission fallback = RoundSubmission.create(
                         round, participant, "{}", "TIMEOUT", 0.0 // 점수는 0점
                         );
