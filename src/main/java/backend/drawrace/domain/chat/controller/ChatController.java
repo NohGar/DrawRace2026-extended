@@ -43,6 +43,10 @@ public class ChatController {
                 .findById(securityUser.getUserId())
                 .orElseThrow(() -> new ServiceException("404-1", "유저를 찾을 수 없습니다."));
 
+        // 메시지마다 고유 ID 생성
+        String messageId = java.util.UUID.randomUUID().toString();
+        chatMessage.setMessageId(messageId);
+
         // AI 검열 실행
         String filteredMessage = chatModerationService.fastFilter(securityUser.getUserId(), chatMessage.getMessage());
 
@@ -55,6 +59,6 @@ public class ChatController {
         chatMessage.setType(ChatMessageDto.MessageType.TALK);
         messagingTemplate.convertAndSend("/sub/rooms/" + roomId + "/chat", chatMessage);
 
-        chatModerationService.processAiModeration(roomId, chatMessage);
+        chatModerationService.processAiModeration(securityUser.getUserId(), roomId, chatMessage);
     }
 }

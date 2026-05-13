@@ -130,6 +130,6 @@ class ChatControllerTest {
 
         verify(messagingTemplate).convertAndSend(eq("/sub/rooms/" + roomId + "/chat"), any(ChatMessageDto.class));
 
-        verify(chatModerationService).processAiModeration(eq(roomId), any(ChatMessageDto.class));
+        verify(chatModerationService).processAiModeration(anyLong(), eq(roomId), any(ChatMessageDto.class));
     }
 }
