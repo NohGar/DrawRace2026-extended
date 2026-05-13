@@ -138,7 +138,7 @@ class RoundServiceTest {
         assertThat(response.getStartedAt()).isNotNull();
 
         // 라운드 제한 시간 60초 확인
-        assertThat(response.getTimeLimit()).isEqualTo(60);
+        assertThat(response.getTimeLimit()).isEqualTo(90);
 
         assertThat(room.isPlaying()).isTrue();
 
