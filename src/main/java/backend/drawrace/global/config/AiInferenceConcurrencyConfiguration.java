@@ -20,7 +20,6 @@ public class AiInferenceConcurrencyConfiguration {
             GatewayAiInferenceService gatewayAiInferenceService,
             @Value("${ai.inference.max-concurrent:4}") int maxConcurrent,
             @Value("${ai.inference.acquire-timeout-seconds:120}") long acquireTimeoutSeconds) {
-        return new ConcurrentLimitedAiInferenceService(
-                gatewayAiInferenceService, maxConcurrent, acquireTimeoutSeconds);
+        return new ConcurrentLimitedAiInferenceService(gatewayAiInferenceService, maxConcurrent, acquireTimeoutSeconds);
     }
 }

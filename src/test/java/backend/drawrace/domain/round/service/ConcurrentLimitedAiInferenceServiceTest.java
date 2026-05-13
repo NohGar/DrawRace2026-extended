@@ -42,24 +42,22 @@ class ConcurrentLimitedAiInferenceServiceTest {
         CountDownLatch releaseGate = new CountDownLatch(1);
 
         AiInferenceService delegate = Mockito.mock(AiInferenceService.class);
-        Mockito.when(delegate.infer(Mockito.anyString(), Mockito.anyString()))
-                .thenAnswer(invocation -> {
-                    int c = concurrent.incrementAndGet();
-                    maxSeen.updateAndGet(m -> Math.max(m, c));
-                    insideInfer.countDown();
-                    try {
-                        releaseGate.await(5, TimeUnit.SECONDS);
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
-                        throw new RuntimeException(e);
-                    } finally {
-                        concurrent.decrementAndGet();
-                    }
-                    return new AiInferenceResponse("ok", 0.5);
-                });
+        Mockito.when(delegate.infer(Mockito.anyString(), Mockito.anyString())).thenAnswer(invocation -> {
+            int c = concurrent.incrementAndGet();
+            maxSeen.updateAndGet(m -> Math.max(m, c));
+            insideInfer.countDown();
+            try {
+                releaseGate.await(5, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(e);
+            } finally {
+                concurrent.decrementAndGet();
+            }
+            return new AiInferenceResponse("ok", 0.5);
+        });
 
-        ConcurrentLimitedAiInferenceService limited =
-                new ConcurrentLimitedAiInferenceService(delegate, 2, 5);
+        ConcurrentLimitedAiInferenceService limited = new ConcurrentLimitedAiInferenceService(delegate, 2, 5);
 
         Future<AiInferenceResponse> f1 = executor.submit(() -> limited.infer("img", "k"));
         Future<AiInferenceResponse> f2 = executor.submit(() -> limited.infer("img", "k"));
@@ -82,14 +80,12 @@ class ConcurrentLimitedAiInferenceServiceTest {
         CountDownLatch hold = new CountDownLatch(1);
 
         AiInferenceService delegate = Mockito.mock(AiInferenceService.class);
-        Mockito.when(delegate.infer(Mockito.anyString(), Mockito.anyString()))
-                .thenAnswer(invocation -> {
-                    hold.await(30, TimeUnit.SECONDS);
-                    return new AiInferenceResponse("ok", 0.5);
-                });
+        Mockito.when(delegate.infer(Mockito.anyString(), Mockito.anyString())).thenAnswer(invocation -> {
+            hold.await(30, TimeUnit.SECONDS);
+            return new AiInferenceResponse("ok", 0.5);
+        });
 
-        ConcurrentLimitedAiInferenceService limited =
-                new ConcurrentLimitedAiInferenceService(delegate, 1, 1);
+        ConcurrentLimitedAiInferenceService limited = new ConcurrentLimitedAiInferenceService(delegate, 1, 1);
 
         Future<?> blocker = executor.submit(() -> limited.infer("img", "k"));
         Thread.sleep(100);

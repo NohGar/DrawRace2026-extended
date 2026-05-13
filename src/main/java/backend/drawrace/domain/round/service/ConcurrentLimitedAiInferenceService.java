@@ -35,12 +35,8 @@ public class ConcurrentLimitedAiInferenceService implements AiInferenceService {
             if (acquireTimeoutSeconds <= 0) {
                 semaphore.acquireUninterruptibly();
             } else if (!semaphore.tryAcquire(acquireTimeoutSeconds, TimeUnit.SECONDS)) {
-                log.warn(
-                        "AI 판별 세마포어 대기 시간 초과. keyword={}, timeoutSec={}",
-                        keyword,
-                        acquireTimeoutSeconds);
-                throw new ServiceException(
-                        "503-1", "AI 판별 대기 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.");
+                log.warn("AI 판별 세마포어 대기 시간 초과. keyword={}, timeoutSec={}", keyword, acquireTimeoutSeconds);
+                throw new ServiceException("503-1", "AI 판별 대기 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.");
             }
             acquired = true;
             return delegate.infer(imageData, keyword);
