@@ -70,17 +70,17 @@ public class ChatModerationService {
         // 도배 체크
         checkSpam(userId, originalMessage);
 
-        String normalized = originalMessage.replaceAll("[^가-힣]", "");
+        String normalized = originalMessage.replaceAll("[^가-힣ㄱ-ㅎㅏ-ㅣ]", "");
 
-        String BANNED_PATTERN = ".*(시발|ㅅㅂ|씨발|병신|ㅂㅅ|새끼|야발|지랄|니미|느금|ㅗ).*";
+        String BANNED_PATTERN = ".*(시발|ㅅㅂ|씨발|병신|ㅂㅅ|새끼|야발|지랄|니미|느금|ㅗ|시바|ㅅ1ㅂ).*";
 
         // 키워드 기반 즉시 차단
-        if (originalMessage.matches(BANNED_PATTERN)) {
+        if (originalMessage.matches(BANNED_PATTERN) || normalized.matches(BANNED_PATTERN)) {
             return "****"; // 욕설 발견 시 즉시 마스킹
         }
 
         // 짧은 문장은 임베딩 검사 패스
-        if (originalMessage.length() < 3) {
+        if (originalMessage.trim().length() < 3) {
             return originalMessage;
         }
 
