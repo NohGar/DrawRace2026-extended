@@ -82,8 +82,7 @@ public class AiChatService {
         GatewayChatRequest request = GatewayChatRequest.builder()
                 .model(aiProperties.model())
                 .messages(List.of(
-                        GatewayChatRequest.systemMessage(systemPrompt),
-                        GatewayChatRequest.userMessage("메시지를 생성해줘")))
+                        GatewayChatRequest.systemMessage(systemPrompt), GatewayChatRequest.userMessage("메시지를 생성해줘")))
                 .temperature(0.8)
                 .build();
 
