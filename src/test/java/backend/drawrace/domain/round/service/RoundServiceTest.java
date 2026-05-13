@@ -216,6 +216,7 @@ class RoundServiceTest {
         SubmitDrawingRequest request = createSubmitDrawingRequest(participantId, "dummy-image");
 
         given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
+        given(roundRepository.findByIdForUpdate(roundId)).willReturn(Optional.of(round));
         given(participantRepository.findByIdAndRoomId(participantId, roomId)).willReturn(Optional.of(participant));
         given(roundParticipantRepository.existsByRoundIdAndParticipantId(roundId, participantId))
                 .willReturn(true);
@@ -259,6 +260,7 @@ class RoundServiceTest {
         SubmitDrawingRequest request = createSubmitDrawingRequest(participantId, "dummy-image");
 
         given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
+        given(roundRepository.findByIdForUpdate(roundId)).willReturn(Optional.of(round));
         given(participantRepository.findByIdAndRoomId(participantId, roomId)).willReturn(Optional.of(participant));
         given(roundParticipantRepository.existsByRoundIdAndParticipantId(roundId, participantId))
                 .willReturn(true);
@@ -301,6 +303,7 @@ class RoundServiceTest {
         RoundSubmission otherSubmission = RoundSubmission.create(round, participant2, "other-image", "사과", 0.70);
 
         given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
+        given(roundRepository.findByIdForUpdate(roundId)).willReturn(Optional.of(round));
         given(participantRepository.findByIdAndRoomId(participantId, roomId)).willReturn(Optional.of(participant));
         given(roundParticipantRepository.existsByRoundIdAndParticipantId(roundId, participantId))
                 .willReturn(true);
@@ -359,6 +362,7 @@ class RoundServiceTest {
         RoundSubmission submission = RoundSubmission.create(round, participant, "dummy-image", "사과", 0.95);
 
         given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
+        given(roundRepository.findByIdForUpdate(roundId)).willReturn(Optional.of(round));
         given(participantRepository.findByIdAndRoomId(participantId, roomId)).willReturn(Optional.of(participant));
         given(roundParticipantRepository.existsByRoundIdAndParticipantId(roundId, participantId))
                 .willReturn(true);
@@ -403,6 +407,7 @@ class RoundServiceTest {
         RoundSubmission winnerSubmission = RoundSubmission.create(round, winnerParticipant, "winner-image", "사과", 0.95);
 
         given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
+        given(roundRepository.findByIdForUpdate(roundId)).willReturn(Optional.of(round));
         given(participantRepository.findByIdAndRoomId(participantId, roomId)).willReturn(Optional.of(participant));
         given(roundParticipantRepository.existsByRoundIdAndParticipantId(roundId, participantId))
                 .willReturn(true);
@@ -475,6 +480,7 @@ class RoundServiceTest {
         setCreatedAt(currentSubmission, LocalDateTime.of(2026, 1, 1, 10, 1));
 
         given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
+        given(roundRepository.findByIdForUpdate(roundId)).willReturn(Optional.of(round));
         given(participantRepository.findByIdAndRoomId(participantId, roomId)).willReturn(Optional.of(participant));
         given(roundParticipantRepository.existsByRoundIdAndParticipantId(roundId, participantId))
                 .willReturn(true);
@@ -543,6 +549,7 @@ class RoundServiceTest {
         RoundSubmission otherSubmission = RoundSubmission.create(round, participant2, "other-image", "사과", 0.81);
 
         given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
+        given(roundRepository.findByIdForUpdate(roundId)).willReturn(Optional.of(round));
         given(participantRepository.findByIdAndRoomId(participantId, roomId)).willReturn(Optional.of(participant));
         given(roundParticipantRepository.existsByRoundIdAndParticipantId(roundId, participantId))
                 .willReturn(true);
@@ -591,6 +598,7 @@ class RoundServiceTest {
         RoundSubmission otherSubmission = RoundSubmission.create(round, participant2, "other-image", "사과", 0.60);
 
         given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
+        given(roundRepository.findByIdForUpdate(roundId)).willReturn(Optional.of(round));
         given(participantRepository.findByIdAndRoomId(participantId, roomId)).willReturn(Optional.of(participant));
         given(roundParticipantRepository.existsByRoundIdAndParticipantId(roundId, participantId))
                 .willReturn(true);
@@ -649,6 +657,7 @@ class RoundServiceTest {
         RoundSubmission otherSubmission = RoundSubmission.create(round, participant2, "other-image", "사과", 0.71);
 
         given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
+        given(roundRepository.findByIdForUpdate(roundId)).willReturn(Optional.of(round));
         given(participantRepository.findByIdAndRoomId(participantId, roomId)).willReturn(Optional.of(participant));
         given(roundParticipantRepository.existsByRoundIdAndParticipantId(roundId, participantId))
                 .willReturn(true);
@@ -701,6 +710,7 @@ class RoundServiceTest {
         setCreatedAt(currentSubmission, LocalDateTime.of(2026, 1, 1, 10, 1));
 
         given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
+        given(roundRepository.findByIdForUpdate(roundId)).willReturn(Optional.of(round));
         given(participantRepository.findByIdAndRoomId(participantId, roomId)).willReturn(Optional.of(participant));
         given(roundParticipantRepository.existsByRoundIdAndParticipantId(roundId, participantId))
                 .willReturn(true);
@@ -904,6 +914,7 @@ class RoundServiceTest {
         SubmitDrawingRequest request = createSubmitDrawingRequest(aiParticipantId, "stroke-json");
 
         given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
+        given(roundRepository.findByIdForUpdate(roundId)).willReturn(Optional.of(round));
         given(participantRepository.findByIdAndRoomId(aiParticipantId, roomId)).willReturn(Optional.of(aiParticipant));
         given(roundParticipantRepository.existsByRoundIdAndParticipantId(roundId, aiParticipantId))
                 .willReturn(true);
@@ -934,6 +945,7 @@ class RoundServiceTest {
         SubmitDrawingRequest request = createSubmitDrawingRequest(aiParticipantId, "stroke-json");
 
         given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
+        given(roundRepository.findByIdForUpdate(roundId)).willReturn(Optional.of(round));
         given(participantRepository.findByIdAndRoomId(aiParticipantId, roomId)).willReturn(Optional.of(aiParticipant));
         given(roundParticipantRepository.existsByRoundIdAndParticipantId(roundId, aiParticipantId))
                 .willReturn(true);
@@ -1097,6 +1109,7 @@ class RoundServiceTest {
         RoundSubmission submission = RoundSubmission.create(round, participant, "dummy-image", "사과", 0.95);
 
         given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
+        given(roundRepository.findByIdForUpdate(roundId)).willReturn(Optional.of(round));
         given(participantRepository.findByIdAndRoomId(participantId, roomId)).willReturn(Optional.of(participant));
         given(roundParticipantRepository.existsByRoundIdAndParticipantId(roundId, participantId))
                 .willReturn(true);

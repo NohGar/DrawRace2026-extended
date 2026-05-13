@@ -186,21 +186,49 @@ public class RoundService {
             aiResult = aiInferenceService.infer(request.getImageData(), round.getKeyword());
         }
 
+        /*
+         * 동시 제출: infer는 네트워크 I/O로 길어 락 밖에서 수행하고,
+         * 저장·count·라운드 종료 판정 전에 라운드 행에 배타 락을 걸어 submittedCount 레이스를 방지한다.
+         */
+        Round lockedRound = roundRepository
+                .findByIdForUpdate(roundId)
+                .orElseThrow(() -> new ServiceException("404-2", "존재하지 않는 라운드입니다."));
+
+        roundValidator.validateRoundInProgress(lockedRound);
+
+        Participant lockedParticipant = getValidParticipant(lockedRound, request.getParticipantId());
+
+        if (lockedParticipant.isLeft()) {
+            throw new ServiceException("403-6", "이미 퇴장한 참가자는 제출할 수 없습니다.");
+        }
+
+        if (!lockedParticipant.getUserId().isAi()) {
+            roundValidator.validateParticipantOwner(lockedParticipant, userId);
+        }
+
+        boolean canPlayLocked = roundParticipantRepository.existsByRoundIdAndParticipantId(
+                lockedRound.getId(), lockedParticipant.getId());
+        roundValidator.validateRoundParticipant(canPlayLocked);
+
+        boolean alreadySubmittedLocked = roundSubmissionRepository.existsByRoundIdAndParticipantId(
+                lockedRound.getId(), lockedParticipant.getId());
+        roundValidator.validateNotSubmitted(alreadySubmittedLocked);
+
         // 제출 기록 저장
         RoundSubmission submission = RoundSubmission.create(
-                round, participant, request.getImageData(), aiResult.getAiAnswer(), aiResult.getScore());
+                lockedRound, lockedParticipant, request.getImageData(), aiResult.getAiAnswer(), aiResult.getScore());
         roundSubmissionRepository.save(submission);
 
         // 전원 제출 기준은 퇴장하지 않은 참가자만 대상으로 한다.
-        long submittedCount = roundSubmissionRepository.countActiveByRoundId(round.getId());
-        long totalParticipantCount = roundParticipantRepository.countActiveByRoundId(round.getId());
+        long submittedCount = roundSubmissionRepository.countActiveByRoundId(lockedRound.getId());
+        long totalParticipantCount = roundParticipantRepository.countActiveByRoundId(lockedRound.getId());
 
-        sendPlayerSubmittedEvent(round, participant, submittedCount, totalParticipantCount);
+        sendPlayerSubmittedEvent(lockedRound, lockedParticipant, submittedCount, totalParticipantCount);
 
         // 아직 전원 제출 전이면 대기 응답 반환
         if (submittedCount < totalParticipantCount) {
             return SubmitDrawingResponse.builder()
-                    .roundId(round.getId())
+                    .roundId(lockedRound.getId())
                     .submittedAiAnswer(aiResult.getAiAnswer())
                     .submittedScore(aiResult.getScore())
                     .submittedCount((int) submittedCount)
@@ -212,10 +240,11 @@ public class RoundService {
         }
 
         // 전원 제출 완료 시 라운드 종료 처리
-        SubmitDrawingResponse response = handleRoundCompletion(round, aiResult, submittedCount, totalParticipantCount);
+        SubmitDrawingResponse response =
+                handleRoundCompletion(lockedRound, aiResult, submittedCount, totalParticipantCount);
 
         if (response.isRoundFinished()) {
-            Long roomId = round.getRoom().getId();
+            Long roomId = lockedRound.getRoom().getId();
             // 구독 경로: /sub/rooms/{roomId} 로 결과 전송
             messagingTemplate.convertAndSend("/sub/rooms/" + roomId, response);
         }
