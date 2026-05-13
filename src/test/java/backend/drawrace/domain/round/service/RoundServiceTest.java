@@ -758,7 +758,6 @@ class RoundServiceTest {
         SubmitDrawingRequest request = createSubmitDrawingRequest(participantId, "dummy-image");
 
         given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
-        given(roundRepository.findByIdForUpdate(roundId)).willReturn(Optional.of(round));
         given(participantRepository.findByIdAndRoomId(participantId, roomId)).willReturn(Optional.of(participant));
         given(roundParticipantRepository.existsByRoundIdAndParticipantId(roundId, participantId))
                 .willReturn(true);
@@ -802,7 +801,6 @@ class RoundServiceTest {
         SubmitDrawingRequest request = createSubmitDrawingRequest(participantId, "dummy-image");
 
         given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
-        given(roundRepository.findByIdForUpdate(roundId)).willReturn(Optional.of(round));
         given(participantRepository.findByIdAndRoomId(participantId, roomId)).willReturn(Optional.of(participant));
 
         assertThatThrownBy(() -> roundService.submitDrawing(roundId, 1L, request))
@@ -876,7 +874,6 @@ class RoundServiceTest {
         SubmitDrawingRequest request = createSubmitDrawingRequest(participantId, "dummy-image");
 
         given(roundRepository.findById(roundId)).willReturn(Optional.of(round));
-        given(roundRepository.findByIdForUpdate(roundId)).willReturn(Optional.of(round));
         given(participantRepository.findByIdAndRoomId(participantId, roomId)).willReturn(Optional.of(participant));
 
         willThrow(new ServiceException("403-3", "본인 참가 정보로만 제출할 수 있습니다."))
