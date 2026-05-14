@@ -95,6 +95,7 @@ class RoundGameControllerTest {
                 .status(RoundStatus.IN_PROGRESS)
                 .isTiebreaker(false)
                 .startedAt(LocalDateTime.of(2026, 4, 21, 12, 0, 0))
+                .timeLimit(90)
                 .participants(List.of(
                         RoundParticipantResponse.builder()
                                 .participantId(100L)
@@ -121,6 +122,7 @@ class RoundGameControllerTest {
                 .andExpect(jsonPath("$.data.roundNumber").value(2))
                 .andExpect(jsonPath("$.data.keyword").value("사과"))
                 .andExpect(jsonPath("$.data.status").value("IN_PROGRESS"))
+                .andExpect(jsonPath("$.data.timeLimit").value(90))
                 .andExpect(jsonPath("$.data.tiebreaker").value(false))
                 .andExpect(jsonPath("$.data.participants.length()").value(2))
                 .andExpect(jsonPath("$.data.participants[0].participantId").value(100))
