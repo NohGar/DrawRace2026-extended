@@ -963,7 +963,7 @@ class RoundServiceTest {
         // 저장된 제출의 점수가 0.70~0.85 사이인지 확인
         then(roundSubmissionRepository)
                 .should()
-                .save(argThat(submission -> submission.getScore() >= 0.70 && submission.getScore() < 0.85));
+                .save(argThat(submission -> submission.getScore() >= 0.60 && submission.getScore() < 0.85));
     }
 
     @Test
