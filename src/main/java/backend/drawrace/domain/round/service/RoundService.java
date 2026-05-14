@@ -114,7 +114,6 @@ public class RoundService {
         // 라운드 참가자 등록은 현재 퇴장하지 않은 참가자만 대상으로 한다.
         saveRoundParticipants(savedRound, participants);
         triggerAiIfPresent(savedRound, participants);
-        triggerAiChatOnRoundStart(roomId, keyword, participants);
 
         RoundStartResponse response = RoundStartResponse.from(savedRound, ROUND_TIME_LIMIT);
 
@@ -157,7 +156,7 @@ public class RoundService {
     }
 
     @Transactional
-    public synchronized void forceFinishRound(Long roundId) {
+    public void forceFinishRound(Long roundId) {
         Round round = roundRepository.findByIdForUpdate(roundId).orElse(null);
         // 이미 모두 제출해서 종료되었거나 라운드가 없으면 무시
         if (round == null || round.getStatus() != RoundStatus.IN_PROGRESS) {
@@ -282,40 +281,6 @@ public class RoundService {
 
         roundValidator.validateRoundInProgress(lockedRound);
 
-        /*
-        // 이번 라운드 제출 대상인지 확인
-        boolean canPlay =
-                roundParticipantRepository.existsByRoundIdAndParticipantId(round.getId(), participant.getId());
-        roundValidator.validateRoundParticipant(canPlay);
-
-        // 이미 제출했는지 확인
-        boolean alreadySubmitted =
-                roundSubmissionRepository.existsByRoundIdAndParticipantId(round.getId(), participant.getId());
-        roundValidator.validateNotSubmitted(alreadySubmitted);
-
-        // AI는 스트로크 데이터를 비전 모델로 판독할 수 없으므로 점수를 고정한다 (0.70~0.85)
-        // 인간이 잘 그리면 AI를 이길 수 있는 수준으로 설정
-        AiInferenceResponse aiResult;
-        if (participant.getUserId().isAi()) {
-            double score = 0.70 + ThreadLocalRandom.current().nextDouble(0.15);
-            aiResult = new AiInferenceResponse(round.getKeyword(), score);
-        } else {
-            aiResult = aiInferenceService.infer(request.getImageData(), round.getKeyword());
-        }
-
-
-
-        /*
-         * 동시 제출: infer는 네트워크 I/O로 길어 락 밖에서 수행하고,
-         * 저장·count·라운드 종료 판정 전에 라운드 행에 배타 락을 걸어 submittedCount 레이스를 방지한다.
-         */
-        /*
-        Round lockedRound = roundRepository
-                .findByIdForUpdate(roundId)
-                .orElseThrow(() -> new ServiceException("404-2", "존재하지 않는 라운드입니다."));
-
-        roundValidator.validateRoundInProgress(lockedRound);
-         */
         Participant lockedParticipant = getValidParticipant(lockedRound, request.getParticipantId());
 
         if (lockedParticipant.isLeft()) {
@@ -338,6 +303,7 @@ public class RoundService {
         RoundSubmission submission = RoundSubmission.create(
                 lockedRound, lockedParticipant, request.getImageData(), aiResult.getAiAnswer(), aiResult.getScore());
         roundSubmissionRepository.save(submission);
+        triggerAiChatOnSubmit(lockedRound, lockedParticipant);
 
         // 전원 제출 기준은 퇴장하지 않은 참가자만 대상으로 한다.
         long submittedCount = roundSubmissionRepository.countActiveByRoundId(lockedRound.getId());
@@ -483,8 +449,6 @@ public class RoundService {
                 .build();
         messagingTemplate.convertAndSend("/sub/rooms/" + roomId + "/chat", winnerNotice);
 
-        triggerAiChatOnRoundEnd(roomId, round.getKeyword(), submissions, roundWinner);
-
         return handleAfterRoundFinished(
                 round, submittedAiResult, winnerSubmission, submittedCount, totalParticipantCount, roundWinner);
     }
@@ -541,7 +505,6 @@ public class RoundService {
             List<Participant> participants = participantRepository.findByRoomIdAndIsLeftFalse(room.getId());
             saveRoundParticipants(nextRound, participants);
             triggerAiIfPresent(nextRound, participants);
-            triggerAiChatOnRoundStart(room.getId(), nextRound.getKeyword(), participants);
 
             return SubmitDrawingResponse.builder()
                     .roundId(round.getId())
@@ -615,7 +578,6 @@ public class RoundService {
         scheduleRoundTimeout(tieBreakerRound.getId()); // 타이머
         saveRoundParticipants(tieBreakerRound, topScorers);
         triggerAiIfPresent(tieBreakerRound, topScorers);
-        triggerAiChatOnRoundStart(room.getId(), tieBreakerRound.getKeyword(), topScorers);
 
         return SubmitDrawingResponse.builder()
                 .roundId(round.getId())
@@ -742,32 +704,12 @@ public class RoundService {
         messagingTemplate.convertAndSend("/sub/rooms/" + round.getRoom().getId(), event);
     }
 
-    private void triggerAiChatOnRoundStart(Long roomId, String keyword, List<Participant> participants) {
+    private void triggerAiChatOnSubmit(Round round, Participant participant) {
+        if (!participant.getUserId().isAi()) return;
         AiChatService service = aiChatServiceProvider.getIfAvailable();
         if (service == null) return;
-
-        participants.stream()
-                .filter(p -> !p.isLeft())
-                .filter(p -> p.getUserId().isAi())
-                .findFirst()
-                .ifPresent(ai -> service.triggerOnRoundStart(
-                        roomId, keyword, ai.getUserId().getNickname()));
-    }
-
-    private void triggerAiChatOnRoundEnd(
-            Long roomId, String keyword, List<RoundSubmission> submissions, Participant roundWinner) {
-        AiChatService service = aiChatServiceProvider.getIfAvailable();
-        if (service == null) return;
-
-        submissions.stream()
-                .map(RoundSubmission::getParticipant)
-                .filter(p -> !p.isLeft())
-                .filter(p -> p.getUserId().isAi())
-                .findFirst()
-                .ifPresent(ai -> {
-                    boolean aiIsWinner = ai.getId().equals(roundWinner.getId());
-                    service.triggerOnRoundEnd(roomId, keyword, ai.getUserId().getNickname(), aiIsWinner);
-                });
+        service.triggerOnAiSubmit(
+                round.getRoom().getId(), participant.getUserId().getNickname());
     }
 
     private void sendFinalWinnerNotice(Long roomId, String nickname) {
