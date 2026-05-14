@@ -141,7 +141,7 @@ public class RoundService {
     }
 
     @Transactional
-    public synchronized void forceFinishRound(Long roundId) {
+    public void forceFinishRound(Long roundId) {
         Round round = roundRepository.findByIdForUpdate(roundId).orElse(null);
         // 이미 모두 제출해서 종료되었거나 라운드가 없으면 무시
         if (round == null || round.getStatus() != RoundStatus.IN_PROGRESS) return;
@@ -192,7 +192,7 @@ public class RoundService {
     @Transactional
     public SubmitDrawingResponse submitDrawing(Long roundId, Long userId, SubmitDrawingRequest request) {
         Round round =
-                roundRepository.findByIdForUpdate(roundId).orElseThrow(() -> new ServiceException("404-2", "존재하지 않는 라운드입니다."));
+                roundRepository.findById(roundId).orElseThrow(() -> new ServiceException("404-2", "존재하지 않는 라운드입니다."));
 
         roundValidator.validateRoundInProgress(round);
 
@@ -242,40 +242,6 @@ public class RoundService {
 
         roundValidator.validateRoundInProgress(lockedRound);
 
-        /*
-        // 이번 라운드 제출 대상인지 확인
-        boolean canPlay =
-                roundParticipantRepository.existsByRoundIdAndParticipantId(round.getId(), participant.getId());
-        roundValidator.validateRoundParticipant(canPlay);
-
-        // 이미 제출했는지 확인
-        boolean alreadySubmitted =
-                roundSubmissionRepository.existsByRoundIdAndParticipantId(round.getId(), participant.getId());
-        roundValidator.validateNotSubmitted(alreadySubmitted);
-
-        // AI는 스트로크 데이터를 비전 모델로 판독할 수 없으므로 점수를 고정한다 (0.70~0.85)
-        // 인간이 잘 그리면 AI를 이길 수 있는 수준으로 설정
-        AiInferenceResponse aiResult;
-        if (participant.getUserId().isAi()) {
-            double score = 0.70 + ThreadLocalRandom.current().nextDouble(0.15);
-            aiResult = new AiInferenceResponse(round.getKeyword(), score);
-        } else {
-            aiResult = aiInferenceService.infer(request.getImageData(), round.getKeyword());
-        }
-
-
-
-        /*
-         * 동시 제출: infer는 네트워크 I/O로 길어 락 밖에서 수행하고,
-         * 저장·count·라운드 종료 판정 전에 라운드 행에 배타 락을 걸어 submittedCount 레이스를 방지한다.
-         */
-        /*
-        Round lockedRound = roundRepository
-                .findByIdForUpdate(roundId)
-                .orElseThrow(() -> new ServiceException("404-2", "존재하지 않는 라운드입니다."));
-
-        roundValidator.validateRoundInProgress(lockedRound);
-         */
         Participant lockedParticipant = getValidParticipant(lockedRound, request.getParticipantId());
 
         if (lockedParticipant.isLeft()) {
