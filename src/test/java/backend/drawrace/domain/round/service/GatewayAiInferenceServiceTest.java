@@ -17,7 +17,7 @@ import backend.drawrace.global.exception.ServiceException;
 class GatewayAiInferenceServiceTest {
 
     private final GatewayAiInferenceService gatewayAiInferenceService = new GatewayAiInferenceService(
-            new AiProperties("http://test", "test-key", "test-model"), new ObjectMapper());
+            new AiProperties("http://test", "test-key", "test-model", null), new ObjectMapper());
 
     @Test
     @DisplayName("코드블록으로 감싸진 JSON 응답에서 JSON 본문만 추출한다")
@@ -71,7 +71,7 @@ class GatewayAiInferenceServiceTest {
                 }
                 """;
 
-        GatewayInferenceResult result = invokeParseInferenceResult(content);
+        GatewayInferenceResult result = invokeParseInferenceResult(content, "키워드", 100);
 
         assertThat(result.getAiAnswer()).isEqualTo("사과");
         assertThat(result.getScore()).isEqualTo(0.95);
@@ -82,7 +82,7 @@ class GatewayAiInferenceServiceTest {
     void parseInferenceResult_fail_invalidJson() {
         String content = "사과입니다. score는 0.9입니다.";
 
-        assertThatThrownBy(() -> invokeParseInferenceResult(content))
+        assertThatThrownBy(() -> invokeParseInferenceResult(content, "키워드", 0))
                 .isInstanceOf(ServiceException.class)
                 .hasMessageContaining("AI 응답 파싱에 실패했습니다");
     }
@@ -94,7 +94,7 @@ class GatewayAiInferenceServiceTest {
         setField(result, "aiAnswer", "사과");
         setField(result, "score", 0.77);
 
-        assertThatCode(() -> invokeValidateInferenceResult(result)).doesNotThrowAnyException();
+        assertThatCode(() -> invokeValidateInferenceResult(result, "키워드", 0)).doesNotThrowAnyException();
     }
 
     @Test
@@ -104,7 +104,7 @@ class GatewayAiInferenceServiceTest {
         setField(result, "aiAnswer", "");
         setField(result, "score", 0.77);
 
-        assertThatThrownBy(() -> invokeValidateInferenceResult(result))
+        assertThatThrownBy(() -> invokeValidateInferenceResult(result, "키워드", 0))
                 .isInstanceOf(ServiceException.class)
                 .hasMessageContaining("AI 응답이 올바르지 않습니다");
     }
@@ -116,7 +116,7 @@ class GatewayAiInferenceServiceTest {
         setField(result, "aiAnswer", "사과");
         setField(result, "score", -0.1);
 
-        assertThatThrownBy(() -> invokeValidateInferenceResult(result))
+        assertThatThrownBy(() -> invokeValidateInferenceResult(result, "키워드", 0))
                 .isInstanceOf(ServiceException.class)
                 .hasMessageContaining("AI 응답이 올바르지 않습니다");
     }
@@ -128,14 +128,14 @@ class GatewayAiInferenceServiceTest {
         setField(result, "aiAnswer", "사과");
         setField(result, "score", 1.1);
 
-        assertThatThrownBy(() -> invokeValidateInferenceResult(result))
+        assertThatThrownBy(() -> invokeValidateInferenceResult(result, "키워드", 0))
                 .isInstanceOf(ServiceException.class)
                 .hasMessageContaining("AI 응답이 올바르지 않습니다");
     }
 
     @Test
-    @DisplayName("extractContent는 정상 응답에서 content를 추출한다")
-    void extractContent_success() throws Exception {
+    @DisplayName("extractContentOrNull은 정상 응답에서 content를 추출한다")
+    void extractContentOrNull_success() throws Exception {
         GatewayChatResponse response = createGatewayChatResponse("""
                 {
                   "aiAnswer": "사과",
@@ -143,28 +143,24 @@ class GatewayAiInferenceServiceTest {
                 }
                 """);
 
-        String content = invokeExtractContent(response);
+        String content = invokeExtractContentOrNull(response);
 
         assertThat(content).contains("\"aiAnswer\": \"사과\"");
         assertThat(content).contains("\"score\": 0.95");
     }
 
     @Test
-    @DisplayName("응답이 null이면 content 추출 예외가 발생한다")
-    void extractContent_fail_nullResponse() {
-        assertThatThrownBy(() -> invokeExtractContent(null))
-                .isInstanceOf(ServiceException.class)
-                .hasMessageContaining("AI 응답이 올바르지 않습니다");
+    @DisplayName("응답이 null이면 extractContentOrNull은 null을 반환한다")
+    void extractContentOrNull_fail_nullResponse() throws Exception {
+        assertThat(invokeExtractContentOrNull(null)).isNull();
     }
 
     @Test
-    @DisplayName("choices가 없으면 content 추출 예외가 발생한다")
-    void extractContent_fail_emptyChoices() {
+    @DisplayName("choices가 없으면 extractContentOrNull은 null을 반환한다")
+    void extractContentOrNull_fail_emptyChoices() throws Exception {
         GatewayChatResponse response = new GatewayChatResponse();
 
-        assertThatThrownBy(() -> invokeExtractContent(response))
-                .isInstanceOf(ServiceException.class)
-                .hasMessageContaining("AI 응답이 올바르지 않습니다");
+        assertThat(invokeExtractContentOrNull(response)).isNull();
     }
 
     private String invokeSanitizeContent(String content) throws Exception {
@@ -173,27 +169,14 @@ class GatewayAiInferenceServiceTest {
         return (String) method.invoke(gatewayAiInferenceService, content);
     }
 
-    private GatewayInferenceResult invokeParseInferenceResult(String content) throws Exception {
-        Method method = GatewayAiInferenceService.class.getDeclaredMethod("parseInferenceResult", String.class);
-        method.setAccessible(true);
-
-        try {
-            return (GatewayInferenceResult) method.invoke(gatewayAiInferenceService, content);
-        } catch (Exception e) {
-            if (e.getCause() instanceof RuntimeException runtimeException) {
-                throw runtimeException;
-            }
-            throw e;
-        }
-    }
-
-    private void invokeValidateInferenceResult(GatewayInferenceResult result) throws Exception {
+    private GatewayInferenceResult invokeParseInferenceResult(String content, String keyword, int imageChars)
+            throws Exception {
         Method method = GatewayAiInferenceService.class.getDeclaredMethod(
-                "validateInferenceResult", GatewayInferenceResult.class);
+                "parseInferenceResult", String.class, String.class, int.class);
         method.setAccessible(true);
 
         try {
-            method.invoke(gatewayAiInferenceService, result);
+            return (GatewayInferenceResult) method.invoke(gatewayAiInferenceService, content, keyword, imageChars);
         } catch (Exception e) {
             if (e.getCause() instanceof RuntimeException runtimeException) {
                 throw runtimeException;
@@ -202,18 +185,27 @@ class GatewayAiInferenceServiceTest {
         }
     }
 
-    private String invokeExtractContent(GatewayChatResponse response) throws Exception {
-        Method method = GatewayAiInferenceService.class.getDeclaredMethod("extractContent", GatewayChatResponse.class);
+    private void invokeValidateInferenceResult(GatewayInferenceResult result, String keyword, int imageChars)
+            throws Exception {
+        Method method = GatewayAiInferenceService.class.getDeclaredMethod(
+                "validateInferenceResult", GatewayInferenceResult.class, String.class, int.class);
         method.setAccessible(true);
 
         try {
-            return (String) method.invoke(gatewayAiInferenceService, response);
+            method.invoke(gatewayAiInferenceService, result, keyword, imageChars);
         } catch (Exception e) {
             if (e.getCause() instanceof RuntimeException runtimeException) {
                 throw runtimeException;
             }
             throw e;
         }
+    }
+
+    private String invokeExtractContentOrNull(GatewayChatResponse response) throws Exception {
+        Method method =
+                GatewayAiInferenceService.class.getDeclaredMethod("extractContentOrNull", GatewayChatResponse.class);
+        method.setAccessible(true);
+        return (String) method.invoke(gatewayAiInferenceService, response);
     }
 
     private GatewayChatResponse createGatewayChatResponse(String content) throws Exception {
