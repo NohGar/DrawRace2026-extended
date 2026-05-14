@@ -27,8 +27,8 @@ public class RoundSubmission extends BaseEntity {
     @JoinColumn(name = "participant_id", nullable = false)
     private Participant participant;
 
-    @Lob
-    @Column(nullable = false)
+    /** base64 이미지 등 — MySQL 에서 VARCHAR 한도를 넘지 않도록 LONGTEXT 고정 */
+    @Column(nullable = false, columnDefinition = "LONGTEXT")
     private String imageData;
 
     @Column(nullable = false)
