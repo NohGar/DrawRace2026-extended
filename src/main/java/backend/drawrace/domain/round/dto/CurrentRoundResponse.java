@@ -23,6 +23,7 @@ public class CurrentRoundResponse {
     private LocalDateTime endedAt;
     /** 그리기 제한 시간(초). RoundService 의 ROUND_TIME_LIMIT 과 동일해야 한다. */
     private int timeLimit;
+
     private List<RoundParticipantResponse> participants;
 
     public static CurrentRoundResponse of(
