@@ -12,6 +12,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import backend.drawrace.domain.round.dto.AiInferenceResponse;
 import backend.drawrace.domain.round.dto.gateway.GatewayChatRequest;
 import backend.drawrace.domain.round.dto.gateway.GatewayChatResponse;
+import backend.drawrace.domain.round.dto.gateway.GatewayChatResponse.Choice;
+import backend.drawrace.domain.round.dto.gateway.GatewayChatResponse.Message;
 import backend.drawrace.domain.round.dto.gateway.GatewayInferenceResult;
 import backend.drawrace.global.config.AiProperties;
 import backend.drawrace.global.exception.ServiceException;
@@ -24,6 +26,8 @@ import lombok.extern.slf4j.Slf4j;
 @ConditionalOnExpression("'${ai.mode:}' == 'gateway' or '${ai.mode:}' == 'quickdraw'")
 @RequiredArgsConstructor
 public class GatewayAiInferenceService implements AiInferenceService {
+
+    private static final int LOG_PREVIEW_MAX = 240;
 
     private final AiProperties aiProperties;
     private final ObjectMapper objectMapper;
@@ -61,7 +65,7 @@ public class GatewayAiInferenceService implements AiInferenceService {
         GatewayChatRequest request = GatewayChatRequest.builder()
                 .model(aiProperties.model())
                 .temperature(0.2)
-                .maxTokens(1024)
+                .maxTokens(aiProperties.maxCompletionTokens())
                 .messages(List.of(
                         GatewayChatRequest.systemMessage(buildSystemPrompt()),
                         GatewayChatRequest.userMessage(List.of(
@@ -69,6 +73,7 @@ public class GatewayAiInferenceService implements AiInferenceService {
                                 GatewayChatRequest.imageContent(imageData)))))
                 .build();
 
+        int imageChars = imageData != null ? imageData.length() : 0;
         GatewayChatResponse response = restClient
                 .post()
                 .uri("/chat/completions")
@@ -76,9 +81,20 @@ public class GatewayAiInferenceService implements AiInferenceService {
                 .retrieve()
                 .body(GatewayChatResponse.class);
 
-        String content = sanitizeContent(extractContent(response));
-        GatewayInferenceResult result = parseInferenceResult(content);
-        validateInferenceResult(result);
+        String rawContent = extractContentOrNull(response);
+        if (rawContent == null) {
+            logGatewayResponseShape(keyword, imageChars, response, "message.content 없음 또는 choices 비어 있음");
+            throw new ServiceException("500-1", "AI 응답이 올바르지 않습니다.");
+        }
+
+        String content = sanitizeContent(rawContent);
+        if (content.isBlank()) {
+            logGatewayResponseShape(keyword, imageChars, response, "sanitize 후 본문 비어 있음 rawLen=" + rawContent.length());
+            throw new ServiceException("500-1", "AI 응답이 올바르지 않습니다.");
+        }
+
+        GatewayInferenceResult result = parseInferenceResult(content, keyword, imageChars);
+        validateInferenceResult(result, keyword, imageChars);
 
         return new AiInferenceResponse(result.getAiAnswer(), result.getScore());
     }
@@ -145,18 +161,85 @@ public class GatewayAiInferenceService implements AiInferenceService {
     }
 
     /**
-     * Gateway 응답에서 실제 content 문자열을 추출한다.
+     * Gateway 응답에서 assistant content를 꺼낸다. 구조가 맞지 않거나 content가 null이면 null.
      */
-    private String extractContent(GatewayChatResponse response) {
+    private String extractContentOrNull(GatewayChatResponse response) {
         if (response == null
                 || response.getChoices() == null
-                || response.getChoices().isEmpty()
-                || response.getChoices().get(0).getMessage() == null
-                || response.getChoices().get(0).getMessage().getContent() == null) {
-            throw new ServiceException("500-1", "AI 응답이 올바르지 않습니다.");
+                || response.getChoices().isEmpty()) {
+            return null;
         }
+        Choice choice = response.getChoices().get(0);
+        if (choice == null || choice.getMessage() == null) {
+            return null;
+        }
+        return choice.getMessage().getContent();
+    }
 
-        return response.getChoices().get(0).getMessage().getContent();
+    /** 이미지·토큰은 남기지 않고 응답 형태만 요약한다. */
+    private void logGatewayResponseShape(String keyword, int imageChars, GatewayChatResponse response, String reason) {
+        if (response == null) {
+            log.warn("[AI-GATEWAY] keyword={} imageChars={} reason={} response=null", keyword, imageChars, reason);
+            return;
+        }
+        List<Choice> choices = response.getChoices();
+        int choiceN = choices == null ? 0 : choices.size();
+        String finishReason = null;
+        String role = null;
+        int contentLen = -1;
+        boolean blankContent = false;
+        boolean hasRefusal = false;
+        boolean hasToolCalls = false;
+        if (choiceN > 0 && choices.get(0) != null) {
+            Choice c = choices.get(0);
+            finishReason = c.getFinishReason();
+            Message m = c.getMessage();
+            if (m != null) {
+                role = m.getRole();
+                String ct = m.getContent();
+                if (ct == null) {
+                    contentLen = -1;
+                } else {
+                    contentLen = ct.length();
+                    blankContent = ct.isBlank();
+                }
+                hasRefusal = m.getRefusal() != null && !m.getRefusal().isBlank();
+                hasToolCalls = m.getToolCalls() != null
+                        && !m.getToolCalls().isNull()
+                        && m.getToolCalls().isArray()
+                        && m.getToolCalls().size() > 0;
+            }
+        }
+        log.warn(
+                "[AI-GATEWAY] keyword={} model={} imageChars={} reason={} choices={} finishReason={} role={} contentLen={} blankContent={} hasRefusal={} hasToolCalls={} maxCompletionTokens={}",
+                keyword,
+                aiProperties.model(),
+                imageChars,
+                reason,
+                choiceN,
+                finishReason,
+                role,
+                contentLen,
+                blankContent,
+                hasRefusal,
+                hasToolCalls,
+                aiProperties.maxCompletionTokens());
+        if ("length".equalsIgnoreCase(finishReason) && contentLen <= 0) {
+            log.warn(
+                    "[AI-GATEWAY] 힌트: finish_reason=length 이고 assistant 본문이 비었습니다. 비전 입력 토큰으로 출력 한도가 소진됐을 가능성이 큽니다. "
+                            + "ai.gateway.max-completion-tokens(또는 AI_MAX_COMPLETION_TOKENS)를 더 올리거나, 프론트에서 제출 이미지 해상도·용량을 줄여 보세요.");
+        }
+    }
+
+    private static String previewForLog(String s) {
+        if (s == null) {
+            return "";
+        }
+        String oneLine = s.replace('\n', ' ').replace('\r', ' ');
+        if (oneLine.length() <= LOG_PREVIEW_MAX) {
+            return oneLine;
+        }
+        return oneLine.substring(0, LOG_PREVIEW_MAX) + "…(총 " + s.length() + "자)";
     }
 
     /**
@@ -178,11 +261,17 @@ public class GatewayAiInferenceService implements AiInferenceService {
     /**
      * 정제된 JSON 문자열을 판별 결과 객체로 변환한다.
      */
-    private GatewayInferenceResult parseInferenceResult(String content) {
+    private GatewayInferenceResult parseInferenceResult(String content, String keyword, int imageChars) {
         try {
             return objectMapper.readValue(content, GatewayInferenceResult.class);
         } catch (JsonProcessingException e) {
-            log.error("파싱 실패! AI가 보낸 원본 내용: {}", content);
+            log.error(
+                    "[AI-GATEWAY] JSON 파싱 실패 keyword={} imageChars={} sanitizedLen={} preview={}",
+                    keyword,
+                    imageChars,
+                    content != null ? content.length() : 0,
+                    previewForLog(content),
+                    e);
             throw new ServiceException("500-1", "AI 응답 파싱에 실패했습니다.");
         }
     }
@@ -190,12 +279,20 @@ public class GatewayAiInferenceService implements AiInferenceService {
     /**
      * 판별 결과의 필수 값과 score 범위를 검증한다.
      */
-    private void validateInferenceResult(GatewayInferenceResult result) {
+    private void validateInferenceResult(GatewayInferenceResult result, String keyword, int imageChars) {
         if (result == null
                 || result.getAiAnswer() == null
                 || result.getAiAnswer().isBlank()
                 || result.getScore() < 0.0
                 || result.getScore() > 1.0) {
+            log.warn(
+                    "[AI-GATEWAY] 필드 검증 실패 keyword={} imageChars={} aiAnswerBlank={} score={}",
+                    keyword,
+                    imageChars,
+                    result == null
+                            || result.getAiAnswer() == null
+                            || result.getAiAnswer().isBlank(),
+                    result != null ? result.getScore() : null);
             throw new ServiceException("500-1", "AI 응답이 올바르지 않습니다.");
         }
     }

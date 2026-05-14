@@ -44,6 +44,7 @@ ai:
     base-url: ${AI_GATEWAY_BASE_URL:}
     api-key: ${AI_GATEWAY_API_KEY:}
     model: ${AI_MODEL:}
+    max-completion-tokens: ${AI_MAX_COMPLETION_TOKENS:4096}
 
 storage:
   mode: ${STORAGE_MODE:s3}

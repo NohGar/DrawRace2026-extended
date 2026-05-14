@@ -5,7 +5,9 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
@@ -48,6 +50,18 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class RoundService {
+
+    /**
+     * 스케줄러 람다는 {@code this} 직접 호출 시 AOP 프록시를 타지 않아 {@code @Transactional}이 무시된다.
+     * {@code findByIdForUpdate} 등은 활성 트랜잭션이 필요하므로 프록시 자기 호출용.
+     */
+    private RoundService self;
+
+    @Lazy
+    @Autowired
+    public void setRoundServiceSelf(RoundService self) {
+        this.self = self;
+    }
 
     private final RoomRepository roomRepository;
     private final ParticipantRepository participantRepository;
@@ -118,10 +132,7 @@ public class RoundService {
     // 지정된 시간 뒤에 라운드를 강제로 종료
     public void scheduleRoundTimeout(Long roundId) {
         taskScheduler.schedule(
-                () -> {
-                    handleRoundTimeout(roundId);
-                },
-                Instant.now().plusSeconds(ROUND_TIME_LIMIT));
+                () -> self.handleRoundTimeout(roundId), Instant.now().plusSeconds(ROUND_TIME_LIMIT));
     }
 
     @Transactional
@@ -129,7 +140,11 @@ public class RoundService {
         Round round = roundRepository.findById(roundId).orElse(null);
         if (round == null || round.getStatus() != RoundStatus.IN_PROGRESS) return;
 
-        log.info("{}초 경과! 해당 방의 모든 클라이언트에 강제 제출 명령을 보냅니다. roundId={}", ROUND_TIME_LIMIT, roundId);
+        log.info(
+                "[TIMEOUT] {}초 경과 TIME_OVER 브로드캐스트 roundId={} roomId={}",
+                ROUND_TIME_LIMIT,
+                roundId,
+                round.getRoom().getId());
 
         // 현재까지 그린 걸 제출
         // 구독 경로: /sub/rooms/{roomId}
@@ -137,16 +152,27 @@ public class RoundService {
                 "/sub/rooms/" + round.getRoom().getId(),
                 GameEvent.builder().type("TIME_OVER").data(roundId).build());
 
-        taskScheduler.schedule(() -> forceFinishRound(roundId), Instant.now().plusSeconds(5));
+        taskScheduler.schedule(
+                () -> self.forceFinishRound(roundId), Instant.now().plusSeconds(5));
     }
 
     @Transactional
     public synchronized void forceFinishRound(Long roundId) {
         Round round = roundRepository.findByIdForUpdate(roundId).orElse(null);
         // 이미 모두 제출해서 종료되었거나 라운드가 없으면 무시
-        if (round == null || round.getStatus() != RoundStatus.IN_PROGRESS) return;
+        if (round == null || round.getStatus() != RoundStatus.IN_PROGRESS) {
+            log.info(
+                    "[FORCE_FINISH] 스킵 roundId={} roundNull={} status={}",
+                    roundId,
+                    round == null,
+                    round != null ? round.getStatus() : null);
+            return;
+        }
 
-        log.info("⏰ 5초 대기 종료. 미제출자 강제 0점 처리 시작: roundId={}", roundId);
+        log.info(
+                "[FORCE_FINISH] 미제출 처리 시작 roundId={} roomId={}",
+                roundId,
+                round.getRoom().getId());
 
         // 이번 라운드에 참여한 모든 참가자 목록
         List<RoundParticipant> rpList = roundParticipantRepository.findActiveByRoundId(round.getId());
@@ -228,6 +254,15 @@ public class RoundService {
                 aiResult = aiInferenceService.infer(request.getImageData(), round.getKeyword());
             }
         } catch (Exception e) {
+            log.warn(
+                    "[SUBMIT] AI 추론 실패 → ERROR 폴백 저장. roundId={} roomId={} participantId={} userId={} keyword={} cause={}: {}",
+                    roundId,
+                    round.getRoom().getId(),
+                    request.getParticipantId(),
+                    userId,
+                    round.getKeyword(),
+                    e.getClass().getSimpleName(),
+                    e.getMessage());
             aiResult = new AiInferenceResponse("ERROR", 0.0);
         }
 
@@ -236,7 +271,12 @@ public class RoundService {
                 .orElseThrow(() -> new ServiceException("404-2", "존재하지 않는 라운드입니다."));
 
         if (lockedRound.getStatus() == RoundStatus.FINISHED) {
-            log.info("AI 추론 중 타임아웃 발생. 이 결과는 무시합니다. userId={}", userId);
+            log.warn(
+                    "[SUBMIT] 라운드 이미 FINISHED → 최소 응답(승자 필드 없음). roundId={} roomId={} participantId={} userId={}",
+                    roundId,
+                    lockedRound.getRoom().getId(),
+                    request.getParticipantId(),
+                    userId);
             return SubmitDrawingResponse.builder().roundFinished(true).build();
         }
 
@@ -307,6 +347,15 @@ public class RoundService {
 
         // 아직 전원 제출 전이면 대기 응답 반환
         if (submittedCount < totalParticipantCount) {
+            log.info(
+                    "[SUBMIT] 부분 제출 roundId={} roomId={} participantId={} submittedCount={}/{} aiAnswer={} score={}",
+                    lockedRound.getId(),
+                    lockedRound.getRoom().getId(),
+                    lockedParticipant.getId(),
+                    submittedCount,
+                    totalParticipantCount,
+                    aiResult.getAiAnswer(),
+                    aiResult.getScore());
             return SubmitDrawingResponse.builder()
                     .roundId(lockedRound.getId())
                     .submittedAiAnswer(aiResult.getAiAnswer())
@@ -323,6 +372,15 @@ public class RoundService {
         // 전원 제출 완료 시 라운드 종료 처리
         SubmitDrawingResponse response =
                 handleRoundCompletion(lockedRound, aiResult, submittedCount, totalParticipantCount);
+
+        log.info(
+                "[SUBMIT] 라운드 종료 처리 완료 roundId={} roomId={} roundFinished={} gameFinished={} winnerParticipantId={} nextRoundId={}",
+                lockedRound.getId(),
+                lockedRound.getRoom().getId(),
+                response.isRoundFinished(),
+                response.isGameFinished(),
+                response.getRoundWinnerParticipantId(),
+                response.getNextRoundId());
 
         if (response.isRoundFinished()) {
             Long roomId = lockedRound.getRoom().getId();

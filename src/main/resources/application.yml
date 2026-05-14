@@ -54,6 +54,8 @@ ai:
     base-url: ${AI_GATEWAY_BASE_URL:}
     api-key: ${AI_GATEWAY_API_KEY:}
     model: ${AI_MODEL:}
+    # chat/completions assistant 출력 상한. 비전(base64) 입력이 크면 1024 등으로는 본문이 비고 finish_reason=length 가 나올 수 있음
+    max-completion-tokens: ${AI_MAX_COMPLETION_TOKENS:4096}
 
 storage:
   mode: local
