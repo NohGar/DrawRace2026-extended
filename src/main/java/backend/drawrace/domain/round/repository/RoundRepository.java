@@ -11,14 +11,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import backend.drawrace.domain.round.entity.Round;
-import jakarta.persistence.LockModeType;
 
 public interface RoundRepository extends JpaRepository<Round, Long> {
     Optional<Round> findByRoomIdAndIsActiveTrue(Long roomId);
-
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("SELECT r FROM Round r WHERE r.id = :id")
-    Optional<Round> findByIdWithLock(@Param("id") Long id);
 
     /**
      * 그림 제출 저장·집계 직전에 호출한다. 동시에 제출할 때 submittedCount 레이스를 막기 위한 배타 락.

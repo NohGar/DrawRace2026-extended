@@ -192,7 +192,7 @@ public class RoundService {
     @Transactional
     public SubmitDrawingResponse submitDrawing(Long roundId, Long userId, SubmitDrawingRequest request) {
         Round round =
-                roundRepository.findByIdWithLock(roundId).orElseThrow(() -> new ServiceException("404-2", "존재하지 않는 라운드입니다."));
+                roundRepository.findByIdForUpdate(roundId).orElseThrow(() -> new ServiceException("404-2", "존재하지 않는 라운드입니다."));
 
         roundValidator.validateRoundInProgress(round);
 
