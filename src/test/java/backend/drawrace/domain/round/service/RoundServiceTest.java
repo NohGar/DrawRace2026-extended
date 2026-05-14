@@ -843,6 +843,7 @@ class RoundServiceTest {
         assertThat(response.getParticipants()).hasSize(2);
         assertThat(response.getParticipants().get(0).isSubmitted()).isTrue();
         assertThat(response.getParticipants().get(1).isSubmitted()).isFalse();
+        assertThat(response.getTimeLimit()).isEqualTo(90);
     }
 
     @Test

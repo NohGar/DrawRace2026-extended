@@ -380,7 +380,7 @@ public class RoundService {
                         })
                         .toList();
 
-        return CurrentRoundResponse.of(currentRound, participants);
+        return CurrentRoundResponse.of(currentRound, participants, ROUND_TIME_LIMIT);
     }
 
     /**
