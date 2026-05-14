@@ -132,8 +132,7 @@ public class RoundService {
     // 지정된 시간 뒤에 라운드를 강제로 종료
     public void scheduleRoundTimeout(Long roundId) {
         taskScheduler.schedule(
-                () -> self.handleRoundTimeout(roundId),
-                Instant.now().plusSeconds(ROUND_TIME_LIMIT));
+                () -> self.handleRoundTimeout(roundId), Instant.now().plusSeconds(ROUND_TIME_LIMIT));
     }
 
     @Transactional
@@ -153,7 +152,8 @@ public class RoundService {
                 "/sub/rooms/" + round.getRoom().getId(),
                 GameEvent.builder().type("TIME_OVER").data(roundId).build());
 
-        taskScheduler.schedule(() -> self.forceFinishRound(roundId), Instant.now().plusSeconds(5));
+        taskScheduler.schedule(
+                () -> self.forceFinishRound(roundId), Instant.now().plusSeconds(5));
     }
 
     @Transactional

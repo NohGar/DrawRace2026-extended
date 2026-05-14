@@ -40,7 +40,10 @@ public class ConcurrentLimitedAiInferenceService implements AiInferenceService {
             }
             acquired = true;
             if (log.isDebugEnabled()) {
-                log.debug("[AI-LIMIT] 세마포어 획득 후 delegate 호출 keyword={} remainingPermits={}", keyword, semaphore.availablePermits());
+                log.debug(
+                        "[AI-LIMIT] 세마포어 획득 후 delegate 호출 keyword={} remainingPermits={}",
+                        keyword,
+                        semaphore.availablePermits());
             }
             return delegate.infer(imageData, keyword);
         } catch (InterruptedException e) {

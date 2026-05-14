@@ -177,8 +177,7 @@ public class GatewayAiInferenceService implements AiInferenceService {
     }
 
     /** 이미지·토큰은 남기지 않고 응답 형태만 요약한다. */
-    private void logGatewayResponseShape(
-            String keyword, int imageChars, GatewayChatResponse response, String reason) {
+    private void logGatewayResponseShape(String keyword, int imageChars, GatewayChatResponse response, String reason) {
         if (response == null) {
             log.warn("[AI-GATEWAY] keyword={} imageChars={} reason={} response=null", keyword, imageChars, reason);
             return;
@@ -205,11 +204,10 @@ public class GatewayAiInferenceService implements AiInferenceService {
                     blankContent = ct.isBlank();
                 }
                 hasRefusal = m.getRefusal() != null && !m.getRefusal().isBlank();
-                hasToolCalls =
-                        m.getToolCalls() != null
-                                && !m.getToolCalls().isNull()
-                                && m.getToolCalls().isArray()
-                                && m.getToolCalls().size() > 0;
+                hasToolCalls = m.getToolCalls() != null
+                        && !m.getToolCalls().isNull()
+                        && m.getToolCalls().isArray()
+                        && m.getToolCalls().size() > 0;
             }
         }
         log.warn(
@@ -291,7 +289,9 @@ public class GatewayAiInferenceService implements AiInferenceService {
                     "[AI-GATEWAY] 필드 검증 실패 keyword={} imageChars={} aiAnswerBlank={} score={}",
                     keyword,
                     imageChars,
-                    result == null || result.getAiAnswer() == null || result.getAiAnswer().isBlank(),
+                    result == null
+                            || result.getAiAnswer() == null
+                            || result.getAiAnswer().isBlank(),
                     result != null ? result.getScore() : null);
             throw new ServiceException("500-1", "AI 응답이 올바르지 않습니다.");
         }
