@@ -30,7 +30,7 @@ public class UserServiceImpl implements UserService {
                 .findById(userId)
                 .orElseThrow(() -> new ServiceException("404-1", "존재하지 않는 유저입니다. ID: " + userId));
 
-        return UserInfoResponse.from(user);
+        return toResponse(user);
     }
 
     @Override
@@ -64,7 +64,7 @@ public class UserServiceImpl implements UserService {
         }
 
         user.updateProfile(request.nickname(), null);
-        return UserInfoResponse.from(user);
+        return toResponse(user);
     }
 
     @Override
@@ -84,7 +84,12 @@ public class UserServiceImpl implements UserService {
 
         String imageUrl = fileStorageService.store(image);
         user.updateProfile(null, imageUrl);
-        return UserInfoResponse.from(user);
+        return toResponse(user);
+    }
+
+    private UserInfoResponse toResponse(User user) {
+        String profileImageUrl = fileStorageService.getPresignedUrl(user.getProfileImageUrl());
+        return UserInfoResponse.of(user, profileImageUrl);
     }
 
     @Override
