@@ -38,7 +38,7 @@ jwt:
 ai:
   mode: ${AI_MODE:quickdraw}
   inference:
-    max-concurrent: ${AI_INFERENCE_MAX_CONCURRENT:2}
+    max-concurrent: ${AI_INFERENCE_MAX_CONCURRENT:1}
     acquire-timeout-seconds: ${AI_INFERENCE_ACQUIRE_TIMEOUT_SECONDS:120}
   gateway:
     base-url: ${AI_GATEWAY_BASE_URL:}
