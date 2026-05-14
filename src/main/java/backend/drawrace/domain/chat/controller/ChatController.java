@@ -47,8 +47,10 @@ public class ChatController {
                 .findById(securityUser.getUserId())
                 .orElseThrow(() -> new ServiceException("404-1", "유저를 찾을 수 없습니다."));
 
+        String originalRawMessage = chatMessage.getMessage();
+
         // AI 검열 실행
-        String filteredMessage = chatModerationService.fastFilter(securityUser.getUserId(), chatMessage.getMessage());
+        String filteredMessage = chatModerationService.fastFilter(securityUser.getUserId(), originalRawMessage);
 
         stopWatch.stop();
         log.info("[성능체크] 채팅 필터링 완료 - 소요시간: {}ms, 메시지: {}", stopWatch.getTotalTimeMillis(), filteredMessage);
@@ -59,6 +61,8 @@ public class ChatController {
         chatMessage.setType(ChatMessageDto.MessageType.TALK);
         messagingTemplate.convertAndSend("/sub/rooms/" + roomId + "/chat", chatMessage);
 
-        chatModerationService.processAiModeration(securityUser.getUserId(), roomId, chatMessage);
+        if (originalRawMessage.equals(filteredMessage)) {
+            chatModerationService.processAiModeration(securityUser.getUserId(), roomId, chatMessage);
+        }
     }
 }
