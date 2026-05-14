@@ -20,7 +20,6 @@
   <img src="https://img.shields.io/badge/Spring_Boot-3.3-6DB33F?style=flat-square&logo=spring&logoColor=white" alt="Spring Boot" />
   <img src="https://img.shields.io/badge/MySQL-4479A1?style=flat-square&logo=mysql&logoColor=white" alt="MySQL" />
   <img src="https://img.shields.io/badge/Redis-DC382D?style=flat-square&logo=redis&logoColor=white" alt="Redis" />
-  <img src="https://img.shields.io/badge/AWS_S3-569A31?style=flat-square&logo=amazons3&logoColor=white" alt="S3" />
 </p>
 
 ---
@@ -46,7 +45,9 @@
 ## 소개
 
 **Draw Race** 백엔드는 방·참가자·게임 라운드·그림 제출·AI 판별, 실시간 채팅·검열, 친구·초대, 전적 등을 담당하는 **Spring Boot** 애플리케이션입니다.  
-REST API와 **WebSocket(STOMP)** 로 프론트엔드와 연동하며, 운영 환경에서는 **MySQL·Redis·S3** 를 사용합니다.
+**REST API**와 **WebSocket(STOMP)** 로 프론트엔드와 연동합니다.
+
+운영에서는 **MySQL**과 **Redis**를 쓰고, 프로필 이미지 등 파일은 **`storage.mode` 설정에 따라** 서버 로컬 디렉터리에 두거나(기본·팀 운영에 맞게), 코드에 포함된 **S3 구현**을 켤 수 있습니다.
 
 ---
 
@@ -54,13 +55,16 @@ REST API와 **WebSocket(STOMP)** 로 프론트엔드와 연동하며, 운영 환
 
 | 영역 | 내용 |
 | --- | --- |
-| **인증·회원** | JWT, 회원가입·로그인, 게스트 로그인, 비밀번호·프로필(정책에 따름) |
-| **방·게임** | 방 CRUD, 참가자, 방장, 게임 시작·라운드 진행·타임아웃·결승 |
-| **AI 연동** | 제시어 생성, 그림 판별(재시도·동시 호출 제한), 채팅 검열용 LLM 호출 |
-| **실시간** | STOMP 채널(방 이벤트, 채팅, 랭킹, 드로잉 중계 등) |
-| **채팅** | 키워드·임베딩 유사도 1차, AI 2차 검열, 스팸·스트라이크 |
-| **스토리지** | 로컬 디렉터리 또는 **AWS S3** 에 프로필 이미지 등 저장 |
-| **기타** | 친구·방 초대, 닉네임 풀·AI 유저 시드 등 |
+| **인증·회원** | JWT, 회원가입·로그인, **게스트 로그인**, 토큰 재발급, 비밀번호·프로필(일반/게스트 정책 구분) |
+| **방·게임** | 방 CRUD, 비밀번호 방, 참가자·방장, 게임 시작, 라운드 진행·**시간 초과·미제출 자동 마감**, 다음 라운드·**결승**, 실시간 랭킹(Redis) |
+| **AI 유저** | 기동 시 **AI 전용 계정**이 없으면 자동 생성, 방장이 대기 중 **AI 참가자 추가/제거**, 라운드마다 **QuickDraw 스타일 스케치 데이터**로 자동 제출(실패 시 폴백), AI는 로그인 불가·**종료 전적에서 제외** |
+| **AI 연동(LLM)** | 제시어 생성(gateway 모드), 그림 판별(재시도·동시 호출 제한), 채팅 검열·기타 게이트웨이 호출 |
+| **제시어 모드** | `gateway`(AI 생성 + fallback 목록) / `quickdraw`(카테고리 랜덤) 등 설정에 따라 분기 |
+| **실시간** | STOMP — 방 공통 이벤트, 채팅, 랭킹, 드로잉 좌표 중계 등 |
+| **채팅** | 키워드·임베딩 유사도 1차, AI 2차 검열, 도배·스트라이크·일시 채팅 금지 |
+| **친구·초대** | 친구 요청·수락, 방으로 친구 초대(정책에 따른 제한), 알림용 구독 채널 |
+| **게스트 닉네임** | DB 풀에서 할당, 부족 시 LLM으로 생성하는 경로 |
+| **파일 저장** | **기본은 로컬 디렉터리**(`storage.mode=local`, 미지정 시에도 로컬 빈이 기본). `storage.mode=s3`일 때만 S3 빈 활성화 |
 
 ---
 
@@ -69,22 +73,23 @@ REST API와 **WebSocket(STOMP)** 로 프론트엔드와 연동하며, 운영 환
 | 영역 | 사용 기술 |
 | --- | --- |
 | 언어·런타임 | **Java 21** |
-| 프레임워크 | **Spring Boot 3.3** (Web, Data JPA, Security, WebSocket, Validation) |
-| 데이터베이스 | **MySQL** (운영), **H2** (로컬 기본) |
-| 캐시·세션 등 | **Redis** |
+| 프레임워크 | **Spring Boot 3.3** — Web, Data JPA, Security, WebSocket, Validation |
+| 데이터베이스 | **MySQL**(운영 프로필), **H2**(로컬 기본) |
+| 인메모리·캐시 | **Redis** — 랭킹, 채팅 검열 스트라이크 등 |
 | 인증 | **JWT** (jjwt) |
 | API 문서 | **SpringDoc OpenAPI** (Swagger UI) |
-| 클라우드 | **Spring Cloud AWS** — S3 |
-| ML·텍스트 | **DJL** + **PyTorch** 엔진, Hugging Face 토크나이저(채팅 임베딩 등) |
+| 파일 저장 | **로컬 디스크**(기본) · **AWS S3**(선택, `spring-cloud-aws-starter-s3`, `storage.mode=s3`) |
+| ML·텍스트 | **DJL** + **PyTorch** 엔진, Hugging Face 토크나이저(채팅 임베딩 유사도 등) |
 | 코드 스타일 | **Spotless** (Palantir Java Format) |
 
 ---
 
 ## 요구 사항
 
-- **JDK 21** (프로젝트 toolchain)
-- **Redis** (로컬 실행 시 기본 `localhost:6379`)
-- 운영 프로필 사용 시: **MySQL**, **AWS 자격 증명(S3)** 및 아래 환경 변수
+- **JDK 21**
+- **Redis** (기본 `localhost:6379`)
+- **`prod` 프로필**: **MySQL** 및 `application-prod.yml` 에 맞는 DB 계정
+- 파일은 **로컬 모드**면 업로드 디렉터리만 있으면 됨. **S3를 쓰지 않는 배포**면 `STORAGE_MODE=local`(또는 동등 설정)으로 두면 됨
 
 ---
 
@@ -102,31 +107,33 @@ chmod +x gradlew
 ./gradlew bootRun
 ```
 
-기본 포트는 **8080** 입니다.  
-로컬에서는 **H2 인메모리 DB**와 **H2 콘솔**이 켜져 있어 별도 MySQL 없이도 기동할 수 있습니다(설정은 `application.yml` 참고).
+- 기본 포트: **8080**
+- 프로필 미지정 시: **H2 인메모리**, **로컬 파일 저장**, H2 콘솔 사용 가능
 
-프론트엔드와 함께 쓰려면 [INT1-Project-Team05-FE](https://github.com/Programmers-Intern-Program/INT1-Project-Team05-FE) 의 `NEXT_PUBLIC_API_BASE_URL` 을 `http://localhost:8080` 으로 맞춥니다.
+프론트와 연동: [INT1-Project-Team05-FE](https://github.com/Programmers-Intern-Program/INT1-Project-Team05-FE) 에서 `NEXT_PUBLIC_API_BASE_URL` 을 `http://localhost:8080` 등으로 맞춥니다.
 
 ---
 
 ## 환경 변수
 
-루트에 `.env` 또는 `.env.properties` 를 두면 `application.yml` 의 `optional:file:.env[.properties]` 로 읽을 수 있습니다.
+루트 **`.env`** 또는 **`.env.properties`** 를 두면 설정을 읽습니다.
 
-### 공통으로 자주 쓰는 값
+### 공통
 
 | 변수 | 설명 |
 | --- | --- |
-| `JWT_SECRET_KEY` | JWT 서명용 비밀키(충분한 길이) |
+| `JWT_SECRET_KEY` | JWT 서명 키(충분한 길이) |
 
-### AI 게이트웨이 (제시어·판별·채팅 검열 등)
+### AI 게이트웨이
 
 | 변수 | 설명 |
 | --- | --- |
 | `AI_GATEWAY_BASE_URL` | LLM API 베이스 URL |
 | `AI_GATEWAY_API_KEY` | API 키 |
-| `AI_MODEL` | 모델 식별자 |
+| `AI_MODEL` | 모델명 |
+| `AI_MODE` | `quickdraw` / `gateway` 등(프로필·기본값 참고) |
 | `AI_MAX_COMPLETION_TOKENS` | 완성 토큰 상한(선택) |
+| `AI_INFERENCE_MAX_CONCURRENT` 등 | 동시 추론 상한 등(프로덕션 yml 참고) |
 
 ### 운영 DB (`prod`)
 
@@ -135,33 +142,26 @@ chmod +x gradlew
 | `DB_USERNAME` | MySQL 사용자 |
 | `DB_PASSWORD` | MySQL 비밀번호 |
 
-### 스토리지 (`prod` 기본은 S3 모드)
+### 파일 저장
 
 | 변수 | 설명 |
 | --- | --- |
-| `STORAGE_MODE` | `s3` 또는 `local` |
-| `STORAGE_S3_BUCKET` | 버킷 이름 |
-| `STORAGE_S3_REGION` | 리전(기본 예: `ap-northeast-2`) |
-| `STORAGE_S3_BASE_URL` | 노출용 베이스 URL 등 |
+| `STORAGE_MODE` | **`local`**(디스크) 또는 **`s3`**. 팀이 S3를 쓰지 않으면 **`local`** |
+| `STORAGE_LOCAL_UPLOAD_DIR` | 로컬 업로드 경로(프로덕션 예: 서버 경로) |
+| `STORAGE_LOCAL_BASE_URL` | 브라우저에 줄 파일 URL prefix |
+| `STORAGE_S3_BUCKET`, `STORAGE_S3_REGION`, `STORAGE_S3_BASE_URL` | **`storage.mode=s3` 일 때만** 의미 있음 |
+| `AWS_REGION` | S3 등 AWS 클라이언트용(모드에 따라) |
 
-### AWS
-
-| 변수 | 설명 |
-| --- | --- |
-| `AWS_REGION` | 리전 |
-
-자세한 기본값·프로필별 차이는 `src/main/resources/application.yml`, `application-prod.yml` 을 참고하세요.
+상세 기본값은 `src/main/resources/application.yml`, `application-prod.yml` 을 기준으로 합니다.
 
 ---
 
 ## 실행 프로필
 
-| 프로필 | 설명 |
+| 프로필 | 요약 |
 | --- | --- |
-| *(미지정)* | 로컬 개발용: H2, 로컬 스토리지 기본값 등 |
-| `prod` | 운영: MySQL, Redis, S3, 필수 시크릿 검증 |
-
-예시:
+| *(미지정)* | H2, Redis 로컬, **스토리지 local**, 개발 편의 |
+| `prod` | MySQL, Redis, JWT 필수, 스토리지는 **`STORAGE_MODE`** 로 `local` / `s3` 선택(`application-prod` 기본값은 yaml에 정의됨 — 운영 시 팀 값으로 오버라이드) |
 
 ```bash
 ./gradlew bootRun --args='--spring.profiles.active=prod'
@@ -173,19 +173,17 @@ chmod +x gradlew
 
 | 명령 | 설명 |
 | --- | --- |
-| `./gradlew bootRun` | 애플리케이션 실행 |
-| `./gradlew build` | 컴파일 + 테스트 + 패키징 |
+| `./gradlew bootRun` | 실행 |
+| `./gradlew build` | 빌드 + 테스트 |
 | `./gradlew test` | 테스트만 |
-| `./gradlew spotlessCheck` | Java 포맷·import 규칙 검사(CI와 동일) |
-| `./gradlew spotlessApply` | Spotless 자동 수정 |
+| `./gradlew spotlessCheck` | 포맷 검사(CI와 동일) |
+| `./gradlew spotlessApply` | 자동 포맷 |
 
 ---
 
 ## API 문서
 
-애플리케이션 실행 후 브라우저에서 **Swagger UI** 로 OpenAPI 명세를 확인합니다.
-
-- 로컬 예: `http://localhost:8080/swagger-ui/index.html` (SpringDoc OpenAPI 2.x 기준)
+실행 후 예: `http://localhost:8080/swagger-ui/index.html`
 
 ---
 
@@ -193,13 +191,13 @@ chmod +x gradlew
 
 ```
 src/main/java/backend/drawrace/
-├── DrawRaceApplication.java    # 진입점
-├── domain/                     # 도메인별 패키지
-│   ├── room/                   # 방, 참가자, 랭킹
-│   ├── round/                  # 라운드, 제출, AI 판별
-│   ├── user/                   # 회원, 게스트, 친구
-│   └── chat/                   # 채팅, 검열
-└── global/                     # 설정, 보안, WebSocket, 스토리지, 예외
+├── DrawRaceApplication.java
+├── domain/
+│   ├── room/          # 방, 참가자, AI 참가자 API, 랭킹
+│   ├── round/         # 라운드, 제출, AI 판별, QuickDraw 연동
+│   ├── user/          # 회원, 게스트, 친구, 닉네임 풀
+│   └── chat/          # 채팅 STOMP, 검열
+└── global/            # Security, JWT, WebSocket, 스토리지(local/S3), 예외, 초기 데이터(AI 유저 등)
 ```
 
 ---
@@ -208,8 +206,8 @@ src/main/java/backend/drawrace/
 
 | 항목 | 내용 |
 | --- | --- |
-| **CI** | GitHub Actions — JDK 21, Redis 서비스 컨테이너, Spotless 검사, `./gradlew build` |
-| **배포** | `main` 푸시 시 EC2에 SSH 후 `git pull`, 빌드, **systemd** 로 백엔드 재시작(워크플로 기준) |
+| **CI** | GitHub Actions — JDK 21, Redis 서비스, Spotless, `./gradlew build` |
+| **배포** | `main` 푸시 시 EC2 SSH → `git pull` → 빌드 → **systemd** 로 재시작 |
 
 ---
 
@@ -217,7 +215,7 @@ src/main/java/backend/drawrace/
 
 | 파일 | 용도 |
 | --- | --- |
-| [`docs/drawrace-logo.png`](docs/drawrace-logo.png) | DrawRace 팀 로고(프론트 `public` 과 동일 에셋 복사) |
+| [`docs/drawrace-logo.png`](docs/drawrace-logo.png) | DrawRace 팀 로고 |
 
 ---
 
