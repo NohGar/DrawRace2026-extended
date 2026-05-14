@@ -25,9 +25,9 @@ import lombok.extern.slf4j.Slf4j;
 @ConditionalOnProperty(name = "ai.mode", havingValue = "quickdraw")
 public class AiSubmissionService {
 
-    // 실제 사람처럼 보이도록 랜덤 딜레이를 준다 (5~15초)
-    private static final long AI_DELAY_MIN_MS = 5_000L;
-    private static final long AI_DELAY_MAX_MS = 15_000L;
+    // 실제 사람처럼 보이도록 랜덤 딜레이를 준다 (10~20초)
+    private static final long AI_DELAY_MIN_MS = 10_000L;
+    private static final long AI_DELAY_MAX_MS = 20_000L;
 
     private final AiDrawingService aiDrawingService;
     private final RoundService roundService;

@@ -247,7 +247,7 @@ public class RoundService {
         AiInferenceResponse aiResult;
         try {
             if (participant.getUserId().isAi()) {
-                double score = 0.70 + ThreadLocalRandom.current().nextDouble(0.15);
+                double score = 0.60 + ThreadLocalRandom.current().nextDouble(0.25);
                 aiResult = new AiInferenceResponse(round.getKeyword(), score);
             } else {
                 aiResult = aiInferenceService.infer(request.getImageData(), round.getKeyword());
