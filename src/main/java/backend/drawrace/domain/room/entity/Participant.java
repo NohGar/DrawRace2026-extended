@@ -1,7 +1,12 @@
 package backend.drawrace.domain.room.entity;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import jakarta.persistence.*;
 
+import backend.drawrace.domain.round.entity.RoundParticipant;
+import backend.drawrace.domain.round.entity.RoundSubmission;
 import backend.drawrace.domain.user.entity.User;
 import backend.drawrace.global.entity.BaseEntity;
 
@@ -41,6 +46,16 @@ public class Participant extends BaseEntity {
     @Column(name = "is_left", nullable = false)
     @Builder.Default
     private boolean isLeft = false;
+
+    // 유저가 삭제될 때 제출한 그림 기록도 함께 삭제
+    @OneToMany(mappedBy = "participant", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<RoundSubmission> submissions = new ArrayList<>();
+
+    // 유저가 삭제될 때 라운드 참여 정보도 함께 삭제
+    @OneToMany(mappedBy = "participant", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<RoundParticipant> roundParticipants = new ArrayList<>();
 
     public void increaseRoundWinCount() {
         this.roundWinCount++;
