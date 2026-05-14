@@ -100,7 +100,6 @@ public class RoundService {
         // 라운드 참가자 등록은 현재 퇴장하지 않은 참가자만 대상으로 한다.
         saveRoundParticipants(savedRound, participants);
         triggerAiIfPresent(savedRound, participants);
-        triggerAiChatOnRoundStart(roomId, keyword, participants);
 
         RoundStartResponse response = RoundStartResponse.from(savedRound, ROUND_TIME_LIMIT);
 
@@ -264,6 +263,7 @@ public class RoundService {
         RoundSubmission submission = RoundSubmission.create(
                 lockedRound, lockedParticipant, request.getImageData(), aiResult.getAiAnswer(), aiResult.getScore());
         roundSubmissionRepository.save(submission);
+        triggerAiChatOnSubmit(lockedRound, lockedParticipant);
 
         // 전원 제출 기준은 퇴장하지 않은 참가자만 대상으로 한다.
         long submittedCount = roundSubmissionRepository.countActiveByRoundId(lockedRound.getId());
@@ -391,8 +391,6 @@ public class RoundService {
                 .build();
         messagingTemplate.convertAndSend("/sub/rooms/" + roomId + "/chat", winnerNotice);
 
-        triggerAiChatOnRoundEnd(roomId, round.getKeyword(), submissions, roundWinner);
-
         return handleAfterRoundFinished(
                 round, submittedAiResult, winnerSubmission, submittedCount, totalParticipantCount, roundWinner);
     }
@@ -449,7 +447,6 @@ public class RoundService {
             List<Participant> participants = participantRepository.findByRoomIdAndIsLeftFalse(room.getId());
             saveRoundParticipants(nextRound, participants);
             triggerAiIfPresent(nextRound, participants);
-            triggerAiChatOnRoundStart(room.getId(), nextRound.getKeyword(), participants);
 
             return SubmitDrawingResponse.builder()
                     .roundId(round.getId())
@@ -523,7 +520,6 @@ public class RoundService {
         scheduleRoundTimeout(tieBreakerRound.getId()); // 타이머
         saveRoundParticipants(tieBreakerRound, topScorers);
         triggerAiIfPresent(tieBreakerRound, topScorers);
-        triggerAiChatOnRoundStart(room.getId(), tieBreakerRound.getKeyword(), topScorers);
 
         return SubmitDrawingResponse.builder()
                 .roundId(round.getId())
@@ -650,32 +646,12 @@ public class RoundService {
         messagingTemplate.convertAndSend("/sub/rooms/" + round.getRoom().getId(), event);
     }
 
-    private void triggerAiChatOnRoundStart(Long roomId, String keyword, List<Participant> participants) {
+    private void triggerAiChatOnSubmit(Round round, Participant participant) {
+        if (!participant.getUserId().isAi()) return;
         AiChatService service = aiChatServiceProvider.getIfAvailable();
         if (service == null) return;
-
-        participants.stream()
-                .filter(p -> !p.isLeft())
-                .filter(p -> p.getUserId().isAi())
-                .findFirst()
-                .ifPresent(ai -> service.triggerOnRoundStart(
-                        roomId, keyword, ai.getUserId().getNickname()));
-    }
-
-    private void triggerAiChatOnRoundEnd(
-            Long roomId, String keyword, List<RoundSubmission> submissions, Participant roundWinner) {
-        AiChatService service = aiChatServiceProvider.getIfAvailable();
-        if (service == null) return;
-
-        submissions.stream()
-                .map(RoundSubmission::getParticipant)
-                .filter(p -> !p.isLeft())
-                .filter(p -> p.getUserId().isAi())
-                .findFirst()
-                .ifPresent(ai -> {
-                    boolean aiIsWinner = ai.getId().equals(roundWinner.getId());
-                    service.triggerOnRoundEnd(roomId, keyword, ai.getUserId().getNickname(), aiIsWinner);
-                });
+        service.triggerOnAiSubmit(
+                round.getRoom().getId(), participant.getUserId().getNickname());
     }
 
     private void sendFinalWinnerNotice(Long roomId, String nickname) {
