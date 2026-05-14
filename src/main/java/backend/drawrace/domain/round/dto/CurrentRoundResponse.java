@@ -21,9 +21,12 @@ public class CurrentRoundResponse {
     private boolean isTiebreaker;
     private LocalDateTime startedAt;
     private LocalDateTime endedAt;
+    /** 그리기 제한 시간(초). RoundService 의 ROUND_TIME_LIMIT 과 동일해야 한다. */
+    private int timeLimit;
     private List<RoundParticipantResponse> participants;
 
-    public static CurrentRoundResponse of(Round round, List<RoundParticipantResponse> participants) {
+    public static CurrentRoundResponse of(
+            Round round, List<RoundParticipantResponse> participants, int timeLimitSeconds) {
         return CurrentRoundResponse.builder()
                 .roomId(round.getRoom().getId())
                 .roundId(round.getId())
@@ -33,6 +36,7 @@ public class CurrentRoundResponse {
                 .isTiebreaker(round.isTiebreaker())
                 .startedAt(round.getStartedAt())
                 .endedAt(round.getEndedAt())
+                .timeLimit(timeLimitSeconds)
                 .participants(participants)
                 .build();
     }
