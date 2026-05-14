@@ -1,6 +1,7 @@
 package backend.drawrace.global.storage;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Set;
 import java.util.UUID;
 
@@ -16,8 +17,10 @@ import lombok.extern.slf4j.Slf4j;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
-import software.amazon.awssdk.services.s3.model.ObjectCannedACL;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
+import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
 
 @Slf4j
 @Service
@@ -27,8 +30,11 @@ public class S3FileStorageService implements FileStorageService {
 
     private static final Set<String> ALLOWED_EXTENSIONS = Set.of("jpg", "jpeg", "png", "gif", "webp");
 
+    private static final int PRESIGNED_URL_EXPIRY_MINUTES = 10;
+
     private final StorageProperties storageProperties;
     private final S3Client s3Client;
+    private final S3Presigner s3Presigner;
 
     @Override
     public String store(MultipartFile file) {
@@ -50,7 +56,6 @@ public class S3FileStorageService implements FileStorageService {
                     .key(filename)
                     .contentType(file.getContentType())
                     .contentLength(file.getSize())
-                    .acl(ObjectCannedACL.PUBLIC_READ)
                     .build();
 
             s3Client.putObject(putRequest, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
@@ -79,6 +84,24 @@ public class S3FileStorageService implements FileStorageService {
         } catch (Exception e) {
             log.warn("S3 파일 삭제 실패: {}", filename, e);
         }
+    }
+
+    @Override
+    public String getPresignedUrl(String fileUrl) {
+        if (fileUrl == null || fileUrl.isBlank()) return null;
+
+        String baseUrl = storageProperties.s3().baseUrl();
+        String key = fileUrl.startsWith(baseUrl) ? fileUrl.substring(baseUrl.length() + 1) : fileUrl;
+
+        GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
+                .signatureDuration(Duration.ofMinutes(PRESIGNED_URL_EXPIRY_MINUTES))
+                .getObjectRequest(GetObjectRequest.builder()
+                        .bucket(storageProperties.s3().bucket())
+                        .key(key)
+                        .build())
+                .build();
+
+        return s3Presigner.presignGetObject(presignRequest).url().toString();
     }
 
     private String extractExtension(String filename) {
