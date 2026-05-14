@@ -36,6 +36,7 @@ public class ChatModerationService {
 
     private final Map<Long, LastChatInfo> chatHistory = new ConcurrentHashMap<>();
     private final List<float[]> aggressiveVectors = new ArrayList<>();
+    private final List<float[]> normalVectors = new ArrayList<>();
 
     private static final int SPAM_LIMIT_MS = 1000;
     private static final String BANNED_PATTERN = ".*(시발|병신|개새끼|패드립|느금).*";
@@ -43,7 +44,7 @@ public class ChatModerationService {
 
     @PostConstruct
     public void initAggressiveVectors() {
-        List<String> samples = List.of(
+        List<String> badsamples = List.of(
                 "너 진짜 지능 낮냐",
                 "그림 진짜 못 그린다",
                 "손가락 장애 있음?",
@@ -54,9 +55,15 @@ public class ChatModerationService {
                 "가정교육 독학했냐",
                 "부모님 안 계시냐",
                 "부모님 홀수냐");
-        for (String sample : samples) {
+
+        List<String> normalSamples = List.of(
+                "안녕하세요 반가워요", "제 이름은 입니다", "뿌우 입니다", "그림 잘 그리시네요", "반갑습니다", "어떻게 하는 건가요", "감사합니다", "고마워요", "다음에 또 봐요");
+
+        for (String sample : badsamples) {
             aggressiveVectors.add(embeddingService.embed(sample));
         }
+        for (String s : normalSamples) normalVectors.add(embeddingService.embed(s));
+
         log.info("공격적 문장 임베딩 데이터 {}건 로드 완료!", aggressiveVectors.size());
     }
 
@@ -87,13 +94,28 @@ public class ChatModerationService {
         // 임베딩 유사도 체크
         float[] currentVector = embeddingService.embed(originalMessage);
 
-        // 미리 저장해둔 나쁜 문장들과 하나씩 비교
-        for (float[] badVector : aggressiveVectors) {
-            double similarity = embeddingService.calculateSimilarity(currentVector, badVector);
-            if (similarity > SIMILARITY_THRESHOLD) {
-                log.info("임베딩 검열 감지 (유사도: {}): {}", similarity, originalMessage);
-                return "[부적절한 메시지입니다]";
+        // 나쁜 문장과 얼마나 닮았는지 계산
+        double maxBadSimilarity = 0;
+        for (float[] bad : aggressiveVectors) {
+            maxBadSimilarity = Math.max(maxBadSimilarity, embeddingService.calculateSimilarity(currentVector, bad));
+        }
+
+        // 일상 대화와 얼마나 닮았는지 계산
+        double maxNormalSimilarity = 0;
+        for (float[] normal : normalVectors) {
+            maxNormalSimilarity =
+                    Math.max(maxNormalSimilarity, embeddingService.calculateSimilarity(currentVector, normal));
+        }
+
+        if (maxBadSimilarity > SIMILARITY_THRESHOLD) {
+            // 나쁜 문장과 닮았지만, 정상 문장과 더 닮았다면 일상적인 대화로 간주
+            if (maxNormalSimilarity > maxBadSimilarity) {
+                log.info("임베딩 검열 제외 (일상 대화와 더 유사): {}", originalMessage);
+                return originalMessage;
             }
+
+            log.info("임베딩 검열 감지 (유사도: {}): {}", maxBadSimilarity, originalMessage);
+            return "[부적절한 메시지입니다]";
         }
 
         return originalMessage; // 깨끗하면 원문 그대로 즉시 반환
