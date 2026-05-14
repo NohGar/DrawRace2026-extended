@@ -12,7 +12,7 @@ import backend.drawrace.global.config.AiProperties;
 class GatewayKeywordGeneratorTest {
 
     private final GatewayKeywordGenerator gatewayKeywordGenerator =
-            new GatewayKeywordGenerator(new AiProperties("http://test", "test-key", "test-model"));
+            new GatewayKeywordGenerator(new AiProperties("http://test", "test-key", "test-model", null));
 
     @Test
     @DisplayName("코드블록으로 감싸진 응답에서 제시어만 추출한다")

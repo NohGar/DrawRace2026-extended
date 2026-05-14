@@ -39,6 +39,9 @@ public class ConcurrentLimitedAiInferenceService implements AiInferenceService {
                 throw new ServiceException("503-1", "AI 판별 대기 시간이 초과되었습니다. 잠시 후 다시 시도해 주세요.");
             }
             acquired = true;
+            if (log.isDebugEnabled()) {
+                log.debug("[AI-LIMIT] 세마포어 획득 후 delegate 호출 keyword={} remainingPermits={}", keyword, semaphore.availablePermits());
+            }
             return delegate.infer(imageData, keyword);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
