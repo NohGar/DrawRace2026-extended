@@ -11,11 +11,15 @@ public record UserInfoResponse(
         int winGameCount,
         boolean isGuest) {
     public static UserInfoResponse from(User user) {
+        return of(user, user.getProfileImageUrl());
+    }
+
+    public static UserInfoResponse of(User user, String profileImageUrl) {
         return new UserInfoResponse(
                 user.getId(),
                 user.getEmail(),
                 user.getNickname(),
-                user.getProfileImageUrl(),
+                profileImageUrl,
                 user.getStats().getTotalGameCount(),
                 user.getStats().getWinGameCount(),
                 user.isGuest());
