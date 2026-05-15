@@ -11,6 +11,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 
 import backend.drawrace.domain.chat.dto.ChatMessageDto;
@@ -213,8 +214,10 @@ public class RoundService {
      * 그림 제출 처리
      * - 라운드/참가자 유효성을 검증한다.
      * - 제출을 저장하고, 전원 제출 시 라운드 종료 처리를 진행한다.
+     * - MySQL REPEATABLE READ에서 동시 제출 시 {@code countActiveByRoundId}가 스냅샷만 보아
+     *   조기 종료가 누락될 수 있어, 이 메서드만 READ COMMITTED로 최신 커밋 기준 집계를 본다.
      */
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public SubmitDrawingResponse submitDrawing(Long roundId, Long userId, SubmitDrawingRequest request) {
         Round round =
                 roundRepository.findById(roundId).orElseThrow(() -> new ServiceException("404-2", "존재하지 않는 라운드입니다."));
