@@ -278,6 +278,85 @@ class RoomServiceTest {
     }
 
     @Test
+    @DisplayName("게임 종료 - AI가 우승해도 사람은 totalGameCount만 올라가고 winGameCount는 오르지 않는다")
+    void finishGame_aiWins_humanGetsOnlyRecordGame() throws Exception {
+        Long roomId = 100L;
+        Long humanId = 1L;
+
+        Room room = createRoom(roomId, "게임방", humanId);
+        setField(room, "isPlaying", true);
+
+        User humanUser = createUser(humanId, "사람");
+        UserStats stats = UserStats.builder().user(humanUser).build();
+        setField(humanUser, "stats", stats);
+
+        User aiUser = User.builder().nickname("AI봇").isAi(true).build();
+        setField(aiUser, "id", 99L);
+
+        Participant humanParticipant = Participant.builder()
+                .userId(humanUser)
+                .room(room)
+                .roundWinCount(2)
+                .build();
+
+        Participant aiParticipant =
+                Participant.builder().userId(aiUser).room(room).roundWinCount(3).build();
+
+        ZSetOperations.TypedTuple<String> tuple = mock(ZSetOperations.TypedTuple.class);
+        given(rankingService.getRankingList(roomId)).willReturn(Set.of(tuple));
+        given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(participantRepository.findByRoomId(roomId)).willReturn(List.of(humanParticipant, aiParticipant));
+
+        roomService.finishGame(roomId);
+
+        assertThat(stats.getTotalGameCount()).isEqualTo(1);
+        assertThat(stats.getWinGameCount()).isEqualTo(0);
+        assertThat(humanParticipant.isWinner()).isFalse();
+    }
+
+    @Test
+    @DisplayName("게임 종료 - 여러 사람 중 최고 승수 보유자만 recordWin 호출된다")
+    void finishGame_multipleHumans_onlyTopScoreGetsRecordWin() throws Exception {
+        Long roomId = 100L;
+
+        Room room = createRoom(roomId, "게임방", 1L);
+        setField(room, "isPlaying", true);
+
+        User winnerUser = createUser(1L, "우승자");
+        UserStats winnerStats = UserStats.builder().user(winnerUser).build();
+        setField(winnerUser, "stats", winnerStats);
+
+        User loserUser = createUser(2L, "패배자");
+        UserStats loserStats = UserStats.builder().user(loserUser).build();
+        setField(loserUser, "stats", loserStats);
+
+        Participant winner = Participant.builder()
+                .userId(winnerUser)
+                .room(room)
+                .roundWinCount(3)
+                .build();
+        Participant loser = Participant.builder()
+                .userId(loserUser)
+                .room(room)
+                .roundWinCount(1)
+                .build();
+
+        ZSetOperations.TypedTuple<String> tuple = mock(ZSetOperations.TypedTuple.class);
+        given(rankingService.getRankingList(roomId)).willReturn(Set.of(tuple));
+        given(roomRepository.findById(roomId)).willReturn(Optional.of(room));
+        given(participantRepository.findByRoomId(roomId)).willReturn(List.of(winner, loser));
+
+        roomService.finishGame(roomId);
+
+        assertThat(winnerStats.getTotalGameCount()).isEqualTo(1);
+        assertThat(winnerStats.getWinGameCount()).isEqualTo(1);
+        assertThat(loserStats.getTotalGameCount()).isEqualTo(1);
+        assertThat(loserStats.getWinGameCount()).isEqualTo(0);
+        assertThat(winner.isWinner()).isTrue();
+        assertThat(loser.isWinner()).isFalse();
+    }
+
+    @Test
     @DisplayName("방 퇴장 성공 - 방장이 나가면 다음 사람에게 위임된다")
     void leaveRoom_hostDelegation() throws Exception {
         Long roomId = 100L;

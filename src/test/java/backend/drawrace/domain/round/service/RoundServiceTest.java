@@ -574,8 +574,7 @@ class RoundServiceTest {
         assertThat(response.getFinalWinnerParticipantId()).isEqualTo(participantId);
 
         assertThat(participant.getRoundWinCount()).isEqualTo(2);
-        assertThat(participant.isWinner()).isTrue();
-        assertThat(room.isPlaying()).isFalse();
+        then(roomService).should().finishGame(roomId);
     }
 
     @Test
@@ -681,8 +680,7 @@ class RoundServiceTest {
         assertThat(response.getFinalWinnerParticipantId()).isEqualTo(participantId);
 
         assertThat(participant.getRoundWinCount()).isEqualTo(3);
-        assertThat(participant.isWinner()).isTrue();
-        assertThat(room.isPlaying()).isFalse();
+        then(roomService).should().finishGame(roomId);
     }
 
     @Test
@@ -740,8 +738,7 @@ class RoundServiceTest {
 
         assertThat(participant.getRoundWinCount()).isEqualTo(2);
         assertThat(earlierParticipant.getRoundWinCount()).isEqualTo(3);
-        assertThat(earlierParticipant.isWinner()).isTrue();
-        assertThat(room.isPlaying()).isFalse();
+        then(roomService).should().finishGame(roomId);
     }
 
     @Test
