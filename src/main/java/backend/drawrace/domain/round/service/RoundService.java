@@ -471,8 +471,7 @@ public class RoundService {
 
         // 결승 라운드가 끝난 경우 바로 최종 우승 처리
         if (round.isTiebreaker()) {
-            roundWinner.markWinner();
-            room.finishGame();
+            roomService.finishGame(room.getId());
 
             roomService.broadcastLobbyUpdate();
 
@@ -549,8 +548,7 @@ public class RoundService {
         // 단독 최고 승수면 게임 종료
         if (topScorers.size() == 1) {
             Participant finalWinner = topScorers.get(0);
-            finalWinner.markWinner();
-            room.finishGame();
+            roomService.finishGame(room.getId());
 
             roomService.broadcastLobbyUpdate();
 
