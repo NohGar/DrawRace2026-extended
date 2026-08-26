@@ -81,6 +81,7 @@
 | 파일 저장 | **로컬 디스크**(기본) · **AWS S3**(선택, `spring-cloud-aws-starter-s3`, `storage.mode=s3`) |
 | ML·텍스트 | **DJL** + **PyTorch** 엔진, Hugging Face 토크나이저(채팅 임베딩 유사도 등) |
 | 코드 스타일 | **Spotless** (Palantir Java Format) |
+| 컨테이너 | **Docker** / **Docker Compose**, 이미지 레지스트리 **GHCR** |
 
 ---
 
@@ -111,6 +112,19 @@ chmod +x gradlew
 - 프로필 미지정 시: **H2 인메모리**, **로컬 파일 저장**, H2 콘솔 사용 가능
 
 프론트와 연동: [INT1-Project-Team05-FE](https://github.com/Programmers-Intern-Program/INT1-Project-Team05-FE) 에서 `NEXT_PUBLIC_API_BASE_URL` 을 `http://localhost:8080` 등으로 맞춥니다.
+
+### Docker로 실행 (MySQL·Redis 포함)
+
+`prod` 프로필과 동일한 구성(MySQL + Redis)을 로컬에서 그대로 재현하고 싶다면:
+
+```bash
+cp .env.example .env   # 값 채우기
+docker compose up --build
+```
+
+- `Dockerfile`: 멀티스테이지 빌드(빌드용 JDK 스테이지 → 실행용 JRE 스테이지)
+- `docker-compose.yml`: app + MySQL + Redis, 업로드 파일은 named volume에 보존
+- 운영 배포용 구성은 `docker-compose.prod.yml` 참고 (아래 [CI/CD](#cicd) 참고)
 
 ---
 
@@ -206,8 +220,19 @@ src/main/java/backend/drawrace/
 
 | 항목 | 내용 |
 | --- | --- |
-| **CI** | GitHub Actions — JDK 21, Redis 서비스, Spotless, `./gradlew build` |
-| **배포** | `main` 푸시 시 EC2 SSH → `git pull` → 빌드 → **systemd** 로 재시작 |
+| **CI** | GitHub Actions — JDK 21, Redis 서비스, Spotless, `./gradlew build` (PR·`main`/`develop` push마다 실행) |
+| **이미지 빌드·배포** | 릴리즈 태그(`v*.*.*`)를 push하면 Docker 이미지를 빌드해 **GHCR**에 올리고, EC2에 SSH로 접속해 `docker compose pull && up -d`로 재기동. 컨테이너 재시작은 systemd 대신 Docker의 `restart` 정책이 담당 |
+| **롤백** | Actions 탭에서 배포 워크플로우를 **수동 실행**(`workflow_dispatch`)하며 이전 태그를 지정하면, 재빌드 없이 해당 이미지로 즉시 재배포 |
+
+배포 흐름:
+
+```
+main에 기능 머지 (배포 안 됨, CI만 실행)
+  → 준비되면 태그 생성 & push
+      git tag -a v0.1.0 -m "설명"
+      git push origin v0.1.0
+  → GitHub Actions: 이미지 빌드 → GHCR push → EC2에 SSH로 배포 지시
+```
 
 ---
 

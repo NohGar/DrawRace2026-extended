@@ -1,0 +1,64 @@
+# EC2 운영 서버에서 사용하는 compose 파일.
+# 로컬용 docker-compose.yml과의 차이:
+#   - app을 'build: .'로 직접 빌드하지 않고, GHCR에 미리 만들어둔 이미지를 pull해서 씀
+#   - systemd가 더 이상 프로세스를 감시하지 않으므로, restart 정책을 명시해야 함
+#
+# 배포 스크립트가 IMAGE_TAG 환경변수를 넣어주면 그 태그의 이미지를 받는다.
+# (예: IMAGE_TAG=v0.1.0 docker compose -f docker-compose.prod.yml up -d)
+
+services:
+  app:
+    image: ghcr.io/nohgar/drawrace2026-extended:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${DB_NAME:-team05_db}?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      STORAGE_MODE: local
+      STORAGE_LOCAL_UPLOAD_DIR: /app/uploads
+      # 실제 서비스 도메인/IP로 .env에서 반드시 덮어쓸 것
+      STORAGE_LOCAL_BASE_URL: ${STORAGE_LOCAL_BASE_URL}
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-team05_db}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  mysql_data:
+  redis_data:
+  uploads:
