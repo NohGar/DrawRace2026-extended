@@ -37,6 +37,7 @@
 - [API 문서](#api-문서)
 - [프로젝트 구조](#프로젝트-구조)
 - [CI/CD](#cicd)
+- [인프라](#인프라)
 - [브랜드 에셋](#브랜드-에셋)
 - [관련 링크](#관련-링크)
 
@@ -233,6 +234,16 @@ main에 기능 머지 (배포 안 됨, CI만 실행)
       git push origin v0.1.0
   → GitHub Actions: 이미지 빌드 → GHCR push → EC2에 SSH로 배포 지시
 ```
+
+---
+
+## 인프라
+
+현재 인프라는 **단일 EC2에 Docker Compose로 app + MySQL + Redis**를 올린 구성(Tier 0)이며,
+EC2·Elastic IP·보안그룹은 `infra/terraform/`에 **Terraform 코드로 편입**되어 있다.
+
+확장 로드맵(Tier 0 → 3), 각 단계의 도입 트리거, Tier 1(RDS·ElastiCache 분리) 도입 근거와
+알려진 제약(SimpleBroker, 보안그룹 등)은 **[`docs/infra.md`](docs/infra.md)** 참고.
 
 ---
 
