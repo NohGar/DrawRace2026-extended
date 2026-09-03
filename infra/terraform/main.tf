@@ -66,9 +66,9 @@ resource "aws_instance" "app" {
   # 루트 볼륨(OS + 도커 이미지 저장 공간) 설정. gp3는 SSD 계열 중 범용 타입.
   root_block_device {
     volume_size           = 20
-    volume_type            = "gp3"
-    iops                   = 3000
-    delete_on_termination  = true # 인스턴스 지우면 볼륨도 같이 삭제 (남겨두고 싶으면 false)
+    volume_type           = "gp3"
+    iops                  = 3000
+    delete_on_termination = true # 인스턴스 지우면 볼륨도 같이 삭제 (남겨두고 싶으면 false)
   }
 
   tags = {
