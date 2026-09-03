@@ -12,3 +12,16 @@ output "public_ip" {
 output "security_group_id" {
   value = aws_security_group.app.id
 }
+
+# --- Tier 1 ---
+# 앱의 .env에 넣을 접속 주소. host:port 형태가 아니라 host만 나오므로
+# JDBC URL 조립 시 :3306을 붙인다.
+output "rds_endpoint" {
+  description = "RDS MySQL endpoint hostname (append :3306)"
+  value       = aws_db_instance.mysql.address
+}
+
+output "redis_endpoint" {
+  description = "ElastiCache Redis primary endpoint hostname"
+  value       = aws_elasticache_cluster.redis.cache_nodes[0].address
+}

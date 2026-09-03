@@ -1,10 +1,13 @@
-# EC2 운영 서버에서 사용하는 compose 파일.
-# 로컬용 docker-compose.yml과의 차이:
-#   - app을 'build: .'로 직접 빌드하지 않고, GHCR에 미리 만들어둔 이미지를 pull해서 씀
-#   - systemd가 더 이상 프로세스를 감시하지 않으므로, restart 정책을 명시해야 함
+# EC2 운영 서버에서 사용하는 compose 파일. (Tier 1)
+#
+# Tier 0 대비 변경점:
+#   - mysql / redis 서비스 제거 — 이제 RDS / ElastiCache(관리형)로 분리됨.
+#     이 파일이 띄우는 컨테이너는 app 하나뿐이다.
+#   - DB/Redis 접속 host를 컨테이너 이름(mysql/redis)이 아니라 .env의
+#     DB_HOST / REDIS_HOST(관리형 서비스 엔드포인트)에서 받는다.
 #
 # 배포 스크립트가 IMAGE_TAG 환경변수를 넣어주면 그 태그의 이미지를 받는다.
-# (예: IMAGE_TAG=v0.1.0 docker compose -f docker-compose.prod.yml up -d)
+# (예: IMAGE_TAG=v0.2.0 docker compose -f docker-compose.prod.yml up -d)
 
 services:
   app:
@@ -16,8 +19,9 @@ services:
       - .env
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${DB_NAME:-team05_db}?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
-      SPRING_DATA_REDIS_HOST: redis
+      # host만 .env에서 주입 — 나머지 쿼리스트링은 Tier 0과 동일
+      SPRING_DATASOURCE_URL: jdbc:mysql://${DB_HOST}:3306/${DB_NAME:-team05_db}?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=UTF-8&allowPublicKeyRetrieval=true
+      SPRING_DATA_REDIS_HOST: ${REDIS_HOST}
       SPRING_DATA_REDIS_PORT: 6379
       STORAGE_MODE: local
       STORAGE_LOCAL_UPLOAD_DIR: /app/uploads
@@ -25,40 +29,6 @@ services:
       STORAGE_LOCAL_BASE_URL: ${STORAGE_LOCAL_BASE_URL}
     volumes:
       - uploads:/app/uploads
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-
-  mysql:
-    image: mysql:8.0
-    restart: unless-stopped
-    environment:
-      MYSQL_DATABASE: ${DB_NAME:-team05_db}
-      MYSQL_USER: ${DB_USERNAME}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
-      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
-    volumes:
-      - mysql_data:/var/lib/mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
 
 volumes:
-  mysql_data:
-  redis_data:
   uploads:

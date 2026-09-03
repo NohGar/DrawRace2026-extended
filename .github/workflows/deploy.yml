@@ -80,5 +80,7 @@ jobs:
             git checkout origin/main -- docker-compose.prod.yml
             export IMAGE_TAG="$IMAGE_TAG"
             docker compose -f docker-compose.prod.yml pull app
-            docker compose -f docker-compose.prod.yml up -d
+            # --remove-orphans: Tier 1에서 compose 파일에서 빠진 mysql/redis
+            # 컨테이너를 정리한다 (관리형 서비스로 이전됨).
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
             docker image prune -f
