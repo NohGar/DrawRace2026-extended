@@ -8,17 +8,18 @@
 
 ## 1. 현재 상태 — Tier 0 (단일 EC2 모놀리스)
 
-```
-사용자
-  │  HTTP :8080
-  ▼
-┌─────────────────────────────┐
-│  EC2  (t3.medium, Ubuntu 24.04)   │
-│  ┌───────┐ ┌───────┐ ┌───────┐   │
-│  │  app  │ │ MySQL │ │ Redis │   │   ← docker compose (docker-compose.prod.yml)
-│  └───────┘ └───────┘ └───────┘   │
-└─────────────────────────────┘
-        Elastic IP  43.202.171.23
+```mermaid
+flowchart TB
+    U["사용자"] -->|"HTTP :8080"| EC2
+
+    subgraph EC2["EC2 · t3.medium · Ubuntu 24.04"]
+        direction LR
+        APP["app"]
+        MYSQL["MySQL"]
+        REDIS["Redis"]
+    end
+
+    EIP(["Elastic IP<br/>43.202.171.23"]) -.- EC2
 ```
 
 | 항목 | 값 |
