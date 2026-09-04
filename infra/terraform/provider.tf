@@ -9,6 +9,18 @@ terraform {
       version = "~> 5.0"
     }
   }
+
+  # state를 로컬 대신 S3에 저장 (버킷은 bootstrap/에서 별도로 생성).
+  # 락은 DynamoDB 없이 S3 자체 conditional write로 처리(use_lockfile,
+  # Terraform 1.10+) — 동시에 두 사람이 apply해도 서로 막아준다.
+  # backend 블록은 변수를 못 쓰므로 값이 하드코딩되어 있다.
+  backend "s3" {
+    bucket       = "drawrace2026-tfstate-272736188148"
+    key          = "drawrace2026/terraform.tfstate"
+    region       = "ap-northeast-2"
+    encrypt      = true
+    use_lockfile = true
+  }
 }
 
 # 실제 AWS API를 호출할 때 쓸 리전. 인증 정보(Access Key)는 여기 안 적고

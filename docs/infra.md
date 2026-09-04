@@ -59,18 +59,19 @@ flowchart TB
 
 | 파일 | 역할 |
 | --- | --- |
-| `provider.tf` | AWS provider `~> 5.0` 고정, 리전 변수화 |
+| `provider.tf` | AWS provider `~> 5.0` 고정, 리전 변수화, **backend "s3"**(원격 state) |
 | `variables.tf` | `aws_region`, `key_name`, `db_name`/`db_username`/`db_password`(sensitive, default 없음) |
 | `main.tf` | **Tier 0** — VPC/서브넷/키페어는 data 블록(조회만), 보안그룹·EC2·EIP는 resource(import됨) |
 | `tier1.tf` | **Tier 1** — RDS·ElastiCache·전용 보안그룹 2개·서브넷 그룹·파라미터 그룹 (전부 신규 생성) |
 | `outputs.tf` | `instance_id`, `public_ip`, `security_group_id`, `rds_endpoint`, `redis_endpoint` |
+| `bootstrap/` | remote state용 S3 버킷 자체를 만드는 **별도** 설정. 이 디렉토리만 예외적으로 로컬 state 사용 (버킷이 없는 상태에서 그 버킷을 backend로 쓸 수 없어서) |
 
 - VPC·서브넷·키페어는 계정 기본 객체이거나 Terraform이 관리할 수 없는 대상(개인키)이라 **data 블록으로 참조만** 한다.
 - Tier 0의 보안그룹·EC2·EIP는 콘솔에서 만든 것을 `terraform import`로 **destroy 없이** state에만 편입했다.
 - Tier 1 리소스(RDS·ElastiCache 등)는 import할 원본이 없어 `terraform apply`로 **신규 생성**했다 (`Plan: 7 to add, 0 to change, 0 to destroy` — Tier 0 무영향).
 - DB 접속정보는 `terraform.tfvars`(`.gitignore`)에 두고 코드/state 밖에 둔다.
 - `.terraform.lock.hcl`은 커밋한다. `.terraform/`, `*.tfstate*`, `*.tfvars`는 `.gitignore` 처리.
-- **state는 여전히 로컬 전용**이다 — S3 + DynamoDB 원격 백엔드 미도입. 리소스가 7개 늘어난 만큼 state 유실 리스크가 커졌다. ([§5](#5-알려진-제약과-선결-조건) 참고)
+- **state는 S3 원격 백엔드로 이전 완료** (2026-09-04). 버킷 `drawrace2026-tfstate-272736188148`(버저닝+SSE-S3 암호화+퍼블릭 액세스 차단). 락은 별도 DynamoDB 없이 S3 네이티브 conditional write(`use_lockfile`, Terraform 1.10+)로 처리 — 관리 리소스를 하나 줄였다.
 
 ---
 
@@ -149,8 +150,9 @@ flowchart LR
 | 항목 | 이유 |
 | --- | --- |
 | EC2 t3.small 축소 | app 단독으로도 부팅 메모리 ~1.1GB라 2GB에 아슬아슬. OOM 재발 리스크 vs 월 ~$19 절감. 별도로 신중히 판단 |
-| Terraform 원격 state 백엔드 (S3 + DynamoDB lock) | 리소스가 7개 늘어 로컬 state 유실 리스크가 커짐. 다음 작업 후보 |
 | 보안그룹 SSH `0.0.0.0/0` 축소 | [§5](#5-알려진-제약과-선결-조건) |
+
+> Terraform 원격 state 백엔드는 2026-09-04에 별도로 완료했다 (S3, 락은 DynamoDB 대신 네이티브 `use_lockfile`). 자세한 내용은 [§1 IaC](#1-현재-상태--tier-1-관리형-db캐시-분리) 참고.
 
 ---
 
@@ -159,8 +161,7 @@ flowchart LR
 | 항목 | 내용 | 언제까지 |
 | --- | --- | --- |
 | **SimpleBroker** | `WebSocketConfig.java`가 `registry.enableSimpleBroker("/sub")` — Spring 인메모리 STOMP 브로커, 단일 JVM 프로세스 범위. app을 2대 이상으로 늘리면 같은 게임방의 두 유저가 다른 인스턴스에 배정될 때 **에러 없이 조용히** 서로 메시지를 못 받는다. Redis Pub/Sub 또는 RabbitMQ 릴레이로 교체 필요. (Tier 1에서 ElastiCache가 생겼으므로 Redis Pub/Sub 릴레이 전환 경로는 열림) | **Tier 2 착수 전 필수** |
-| **Terraform state 로컬 전용** | 원격 백엔드 없음. 다른 머신에서 작업 불가, state 파일 유실 리스크 (Tier 1로 관리 리소스 7개 증가). | 다음 작업 후보 (§4 후속) |
-| **보안그룹 SSH 개방** | 22번 포트가 `0.0.0.0/0`으로 열려 있다 (`main.tf` 주석에도 명시). 내 IP로 좁히거나 SSM Session Manager로 전환하는 게 맞다. | 원격 state와 함께 정리 권장 |
+| **보안그룹 SSH 개방** | 22번 포트가 `0.0.0.0/0`으로 열려 있다 (`main.tf` 주석에도 명시). 내 IP로 좁히거나 SSM Session Manager로 전환하는 게 맞다. | 다음 작업 후보 |
 | **RDS 비암호화 연결** | 앱→RDS JDBC URL이 `useSSL=false`. VPC 내부 + 보안그룹으로 막혀 있어 당장 위험은 낮지만, `require_secure_transport` + TLS로 조일 여지. | Tier 3 (보안 하드닝) |
 | **8080 직접 노출** | ALB/HTTPS 없이 앱 포트를 그대로 외부 공개. Tier 2에서 ALB 도입 시 자연 해소. | Tier 2 |
 
