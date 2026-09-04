@@ -64,23 +64,70 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
+    # id-token: write가 있어야 GitHub가 이 잡에 OIDC 토큰을 발급해준다.
+    # 그 토큰으로 AWS IAM 역할을 잠깐 빌려 쓰는 게 아래 configure-aws-credentials.
+    permissions:
+      id-token: write
+      contents: read
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
+      # SSH 키 대신 OIDC로 AWS 임시 자격증명을 받는다 — 훔쳐갈 고정 키가
+      # 없고, 이 리포에서 실행된 워크플로우만 이 역할을 빌릴 수 있다
+      # (역할의 신뢰정책이 repo:NohGar/DrawRace2026-extended로 제한, infra/terraform/ssm.tf 참고).
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::272736188148:role/drawrace2026-github-deploy
+          aws-region: ap-northeast-2
+
+      # 22번 포트가 보안그룹에서 아예 빠져 SSH 자체가 안 되므로, EC2 위에서
+      # 셸 명령을 실행하는 통로로 SSM Send Command를 쓴다. 인바운드 포트가
+      # 필요 없다 — EC2가 SSM 엔드포인트로 아웃바운드 HTTPS를 여는 구조.
+      - name: Deploy via SSM
         env:
           IMAGE_TAG: ${{ needs.build-and-push.outputs.tag }}
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          envs: IMAGE_TAG
-          script: |
-            cd ~/apps/INT1-Project-Team05
-            git fetch origin main
-            git checkout origin/main -- docker-compose.prod.yml
-            export IMAGE_TAG="$IMAGE_TAG"
-            docker compose -f docker-compose.prod.yml pull app
-            # --remove-orphans: Tier 1에서 compose 파일에서 빠진 mysql/redis
-            # 컨테이너를 정리한다 (관리형 서비스로 이전됨).
-            docker compose -f docker-compose.prod.yml up -d --remove-orphans
-            docker image prune -f
+        run: |
+          APP_DIR=/home/ubuntu/apps/INT1-Project-Team05
+          INSTANCE_ID=i-045dfcef819e2639d
+
+          cat > /tmp/deploy-commands.json <<JSON
+          {
+            "DocumentName": "AWS-RunShellScript",
+            "InstanceIds": ["$INSTANCE_ID"],
+            "Parameters": {
+              "commands": [
+                "set -e",
+                "git config --system --add safe.directory $APP_DIR",
+                "cd $APP_DIR",
+                "git fetch origin main",
+                "git checkout origin/main -- docker-compose.prod.yml",
+                "export IMAGE_TAG=$IMAGE_TAG",
+                "docker compose -f docker-compose.prod.yml pull app",
+                "docker compose -f docker-compose.prod.yml up -d --remove-orphans",
+                "docker image prune -f"
+              ]
+            }
+          }
+          JSON
+
+          # --system: SSM이 실행하는 셸엔 $HOME이 안 잡혀 있어서 git config
+          # --global(=~/.gitconfig에 씀)이 "fatal: $HOME not set"으로 실패한다.
+          # --system(/etc/gitconfig)은 $HOME과 무관해서 안전.
+          #
+          # --cli-input-json에 file://을 안 쓰고 내용을 직접 넘기는 이유:
+          # file:// 스킴은 러너 OS의 경로 해석에 좌우돼 불필요한 변수가 생긴다.
+          COMMAND_ID=$(aws ssm send-command --cli-input-json "$(cat /tmp/deploy-commands.json)" \
+            --query "Command.CommandId" --output text)
+          echo "SSM command: $COMMAND_ID"
+
+          # send-command는 비동기라, 완료를 기다렸다가 결과를 확인해야
+          # 원격 스크립트의 성공/실패가 이 워크플로우 잡의 성공/실패로 반영된다.
+          aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" || true
+
+          aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" \
+            --query '{Status:Status,Stdout:StandardOutputContent,Stderr:StandardErrorContent}' --output json
+
+          STATUS=$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTANCE_ID" --query "Status" --output text)
+          if [ "$STATUS" != "Success" ]; then
+            echo "::error::SSM deploy command finished with status $STATUS"
+            exit 1
+          fi

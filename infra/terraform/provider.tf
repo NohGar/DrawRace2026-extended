@@ -8,6 +8,12 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    # GitHub Actions OIDC를 붙일 때 GitHub의 TLS 인증서 지문(thumbprint)을
+    # 조회하는 데만 쓴다 (SSM 전환, ssm.tf 참고).
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 
   # state를 로컬 대신 S3에 저장 (버킷은 bootstrap/에서 별도로 생성).

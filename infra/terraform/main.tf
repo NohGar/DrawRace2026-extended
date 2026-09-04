@@ -63,6 +63,10 @@ resource "aws_instance" "app" {
   subnet_id              = data.aws_subnet.app.id
   vpc_security_group_ids = [aws_security_group.app.id]
 
+  # SSM Session Manager로 접속하기 위한 필수 조건 — 이 프로필이 없으면
+  # 에이전트가 떠 있어도 AWS에 자신을 등록하지 못한다 (ssm.tf 참고).
+  iam_instance_profile = aws_iam_instance_profile.ec2_ssm.name
+
   # 루트 볼륨(OS + 도커 이미지 저장 공간) 설정. gp3는 SSD 계열 중 범용 타입.
   root_block_device {
     volume_size           = 20

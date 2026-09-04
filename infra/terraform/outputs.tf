@@ -25,3 +25,10 @@ output "redis_endpoint" {
   description = "ElastiCache Redis primary endpoint hostname"
   value       = aws_elasticache_cluster.redis.cache_nodes[0].address
 }
+
+# --- SSM 전환 ---
+# GitHub Actions의 deploy.yml이 `role-to-assume`으로 그대로 붙여넣는 값.
+output "github_deploy_role_arn" {
+  description = "IAM role ARN GitHub Actions assumes via OIDC to run ssm:SendCommand"
+  value       = aws_iam_role.github_deploy.arn
+}
