@@ -25,15 +25,10 @@ resource "aws_security_group" "app" {
   description = "launch-wizard-1 created 2026-08-27T01:35:56.849Z"
   vpc_id      = data.aws_vpc.default.id
 
-  # 22번 포트: SSH 접속용. 지금 0.0.0.0/0(전세계 허용)으로 열려있는데,
-  # 보안상으로는 내 IP만 허용하는 게 맞음 — 나중에 좁히는 걸 고려.
-  ingress {
-    description = "SSH"
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
+  # 22번(SSH) ingress는 없다 — 사람 접속(SSM Session Manager)도 CI/CD
+  # 배포(SSM Send Command)도 전부 SSM으로 옮겨서, 인바운드 포트가 아예
+  # 필요 없어졌다 (2026-09-04, ssm.tf 참고). 인터넷 전체에 열려있던
+  # 로그인 시도 표면이 이걸로 완전히 사라진다.
 
   # 8080번 포트: Spring Boot 앱이 실제로 응답하는 포트. 외부 사용자가
   # API를 호출해야 하니 전체 공개(0.0.0.0/0)가 맞음.

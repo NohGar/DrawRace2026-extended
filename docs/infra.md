@@ -33,7 +33,7 @@ flowchart TB
 | 네트워크 | 계정 기본 VPC `vpc-04964d75bbc0125f4` / 기본 서브넷 `subnet-02564bbb2ab677c28` (2c) |
 | RDS | `drawrace2026-mysql` · MySQL 8.0 · db.t3.micro · 20GB gp3 (→100GB 오토스케일) · 단일 AZ (2c) · 백업 7일 · 비공개(`publicly_accessible=false`) |
 | ElastiCache | `drawrace2026-redis` · Redis 7.1 · cache.t3.micro · 노드 1개 |
-| 보안그룹 (app) | `sg-066219142f7be9193` — inbound 22, 8080 (자세한 내용은 아래 [알려진 제약](#5-알려진-제약과-선결-조건)) |
+| 보안그룹 (app) | `sg-066219142f7be9193` — inbound **8080만** (SSH 22번 없음, 접속은 전부 SSM) |
 | 보안그룹 (RDS) | `drawrace2026-rds` — inbound 3306, **source = app 보안그룹만** |
 | 보안그룹 (Redis) | `drawrace2026-redis` — inbound 6379, **source = app 보안그룹만** |
 | 런타임 | EC2에 `app` 컨테이너 1개 (`docker-compose.prod.yml`, `restart: unless-stopped`). DB·Redis 접속 host는 EC2 `.env`의 `DB_HOST`/`REDIS_HOST`로 주입 |
@@ -48,7 +48,7 @@ flowchart TB
 | 단계 | 내용 |
 | --- | --- |
 | CI (`.github/workflows/ci.yml`) | PR · `main`/`develop` push마다 — JDK 21, Redis 서비스 컨테이너, Spotless, `./gradlew build` |
-| 이미지 빌드·배포 (`.github/workflows/deploy.yml`) | 릴리즈 태그(`v*.*.*`) push → Docker 이미지 빌드 → GHCR push → EC2에 SSH 접속 후 `origin/main`의 `docker-compose.prod.yml` 체크아웃 → `docker compose pull app && up -d --remove-orphans` |
+| 이미지 빌드·배포 (`.github/workflows/deploy.yml`) | 릴리즈 태그(`v*.*.*`) push → Docker 이미지 빌드 → GHCR push → **GitHub OIDC로 IAM 역할을 잠깐 빌려서 SSM Send Command**로 EC2에 명령 전달 → `origin/main`의 `docker-compose.prod.yml` 체크아웃 → `docker compose pull app && up -d --remove-orphans` (SSH 키 없음, 2026-09-04부터) |
 | 롤백 | Actions 탭에서 `workflow_dispatch`로 이전 태그 지정 → 재빌드 없이 해당 이미지로 즉시 재배포 |
 
 배포 트리거를 `main` push가 아니라 **릴리즈 태그**로 둔 이유: 별도의 장수명 deploy 브랜치를 두면 `main`과 drift가 생기고, "무엇이 배포됐는지"가 브랜치 상태에 숨는다. 태그는 불변이라 "이 커밋이 이 버전으로 배포됨"이 명시적으로 남는다.
@@ -63,7 +63,8 @@ flowchart TB
 | `variables.tf` | `aws_region`, `key_name`, `db_name`/`db_username`/`db_password`(sensitive, default 없음) |
 | `main.tf` | **Tier 0** — VPC/서브넷/키페어는 data 블록(조회만), 보안그룹·EC2·EIP는 resource(import됨) |
 | `tier1.tf` | **Tier 1** — RDS·ElastiCache·전용 보안그룹 2개·서브넷 그룹·파라미터 그룹 (전부 신규 생성) |
-| `outputs.tf` | `instance_id`, `public_ip`, `security_group_id`, `rds_endpoint`, `redis_endpoint` |
+| `ssm.tf` | SSH 폐쇄용 SSM 전환 — EC2용 IAM 역할/인스턴스 프로필, GitHub OIDC 프로바이더 + 배포 전용 IAM 역할(신뢰정책을 이 리포·이 인스턴스로 한정) |
+| `outputs.tf` | `instance_id`, `public_ip`, `security_group_id`, `rds_endpoint`, `redis_endpoint`, `github_deploy_role_arn` |
 | `bootstrap/` | remote state용 S3 버킷 자체를 만드는 **별도** 설정. 이 디렉토리만 예외적으로 로컬 state 사용 (버킷이 없는 상태에서 그 버킷을 backend로 쓸 수 없어서) |
 
 - VPC·서브넷·키페어는 계정 기본 객체이거나 Terraform이 관리할 수 없는 대상(개인키)이라 **data 블록으로 참조만** 한다.
@@ -150,9 +151,11 @@ flowchart LR
 | 항목 | 이유 |
 | --- | --- |
 | EC2 t3.small 축소 | app 단독으로도 부팅 메모리 ~1.1GB라 2GB에 아슬아슬. OOM 재발 리스크 vs 월 ~$19 절감. 별도로 신중히 판단 |
-| 보안그룹 SSH `0.0.0.0/0` 축소 | [§5](#5-알려진-제약과-선결-조건) |
+| RDS TLS 강제화 | [§5](#5-알려진-제약과-선결-조건) |
 
 > Terraform 원격 state 백엔드는 2026-09-04에 별도로 완료했다 (S3, 락은 DynamoDB 대신 네이티브 `use_lockfile`). 자세한 내용은 [§1 IaC](#1-현재-상태--tier-1-관리형-db캐시-분리) 참고.
+>
+> 보안그룹 SSH `0.0.0.0/0`도 2026-09-04에 별도로 정리했다 — 축소가 아니라 **완전 폐쇄**. 사람 접속과 CI/CD 배포 둘 다 SSM으로 옮겨서 22번 인바운드 자체가 필요 없어졌다. 자세한 내용은 [§5](#5-알려진-제약과-선결-조건) 아래 참고.
 
 ---
 
@@ -161,7 +164,6 @@ flowchart LR
 | 항목 | 내용 | 언제까지 |
 | --- | --- | --- |
 | **SimpleBroker** | `WebSocketConfig.java`가 `registry.enableSimpleBroker("/sub")` — Spring 인메모리 STOMP 브로커, 단일 JVM 프로세스 범위. app을 2대 이상으로 늘리면 같은 게임방의 두 유저가 다른 인스턴스에 배정될 때 **에러 없이 조용히** 서로 메시지를 못 받는다. Redis Pub/Sub 또는 RabbitMQ 릴레이로 교체 필요. (Tier 1에서 ElastiCache가 생겼으므로 Redis Pub/Sub 릴레이 전환 경로는 열림) | **Tier 2 착수 전 필수** |
-| **보안그룹 SSH 개방** | 22번 포트가 `0.0.0.0/0`으로 열려 있다 (`main.tf` 주석에도 명시). 내 IP로 좁히거나 SSM Session Manager로 전환하는 게 맞다. | 다음 작업 후보 |
 | **RDS 비암호화 연결** | 앱→RDS JDBC URL이 `useSSL=false`. VPC 내부 + 보안그룹으로 막혀 있어 당장 위험은 낮지만, `require_secure_transport` + TLS로 조일 여지. | Tier 3 (보안 하드닝) |
 | **8080 직접 노출** | ALB/HTTPS 없이 앱 포트를 그대로 외부 공개. Tier 2에서 ALB 도입 시 자연 해소. | Tier 2 |
 
