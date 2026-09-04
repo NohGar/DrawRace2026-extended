@@ -57,6 +57,13 @@ resource "aws_iam_openid_connect_provider" "github" {
 # 이 역할을 빌려갈 수 있는 대상을 "NohGar/DrawRace2026-extended 리포에서
 # 실행된 워크플로우"로만 좁힌다 (sub 클레임 조건) — 다른 리포/포크가
 # 같은 OIDC 프로바이더를 통해 이 역할을 가져다 쓰는 걸 막는다.
+#
+# sub 값은 "repo:OWNER/REPO:..."가 아니라 GitHub가 계정/리포 이름 뒤에
+# 불변 숫자 ID를 붙인 "repo:OWNER@계정ID/REPO@리포ID:..." 형태다 (이름이
+# 같은 계정/리포가 삭제 후 재생성돼도 예전 신뢰관계를 재사용 못 하게 하는
+# GitHub의 최신 방식). CloudTrail에서 실제 실패한 AssumeRoleWithWebIdentity
+# 호출의 sub 클레임을 보고 이 값(NohGar=167192674, DrawRace2026-extended=1346773917)을
+# 확인했다 — 리포 이름만으로 패턴을 짰다가 처음엔 막혔었다.
 resource "aws_iam_role" "github_deploy" {
   name = "drawrace2026-github-deploy"
 
@@ -71,7 +78,7 @@ resource "aws_iam_role" "github_deploy" {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
         StringLike = {
-          "token.actions.githubusercontent.com:sub" = "repo:NohGar/DrawRace2026-extended:*"
+          "token.actions.githubusercontent.com:sub" = "repo:NohGar@167192674/DrawRace2026-extended@1346773917:*"
         }
       }
     }]
