@@ -1,6 +1,5 @@
 package backend.drawrace.domain.chat.service;
 
-import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -9,9 +8,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import backend.drawrace.domain.chat.dto.ChatMessageDto;
-import backend.drawrace.domain.chat.entity.AiChatMessage;
 import backend.drawrace.domain.chat.entity.AiChatMessage.MessageType;
-import backend.drawrace.domain.chat.repository.AiChatMessageRepository;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,14 +22,14 @@ public class AiChatService {
     private static final long CHAT_DELAY_MIN_MS = 2_000L;
     private static final long CHAT_DELAY_MAX_MS = 5_000L;
 
-    private final AiChatMessageRepository messageRepository;
+    private final AiChatMessagePoolService messagePoolService;
     private final SimpMessagingTemplate messagingTemplate;
 
     @Async
     public void triggerOnAiJoin(Long roomId, String aiNickname) {
         try {
             sleep();
-            broadcast(roomId, aiNickname, randomMessage(MessageType.JOIN));
+            broadcast(roomId, aiNickname, messagePoolService.pop(MessageType.JOIN));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {
@@ -44,19 +41,12 @@ public class AiChatService {
     public void triggerOnAiSubmit(Long roomId, String aiNickname) {
         try {
             sleep();
-            broadcast(roomId, aiNickname, randomMessage(MessageType.SUBMIT));
+            broadcast(roomId, aiNickname, messagePoolService.pop(MessageType.SUBMIT));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         } catch (Exception e) {
             log.warn("AI 채팅 실패 (제출). roomId={}", roomId, e);
         }
-    }
-
-    private String randomMessage(MessageType type) {
-        List<AiChatMessage> messages = messageRepository.findByType(type);
-        if (messages.isEmpty()) return "";
-        return messages.get(ThreadLocalRandom.current().nextInt(messages.size()))
-                .getMessage();
     }
 
     private void sleep() throws InterruptedException {
@@ -65,7 +55,7 @@ public class AiChatService {
     }
 
     private void broadcast(Long roomId, String aiNickname, String message) {
-        if (message.isBlank()) return;
+        if (message == null || message.isBlank()) return;
         ChatMessageDto chatMessage = ChatMessageDto.builder()
                 .type(ChatMessageDto.MessageType.TALK)
                 .roomId(roomId)
